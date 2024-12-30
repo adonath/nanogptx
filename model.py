@@ -50,6 +50,10 @@ class GPTConfig(Config):
         if self._key is None:
             self._key = jax.random.PRNGKey(self.seed)
 
+        # in genral state based key generation is not a good idea in Jax!
+        # however the config class never(!) crosses any jit and function transform
+        # boundaries.
+
         self._key, subkey = jax.random.split(self._key)
         return subkey
 
@@ -267,4 +271,30 @@ class CausalSelfAttention:
             value=value,
             is_causal=True,
         )
+        return x
+
+
+@register_dataclass_jax(data_fields=["ln_1", "attn", "ln_2", "mlp"])
+@dataclass(frozen=True)
+class Block:
+    """Self-attention block"""
+
+    ln_1: LayerNorm
+    attn: CausalSelfAttention
+    ln_2: LayerNorm
+    mlp: MLP
+
+    @classmethod
+    def from_config(cls, config: GPTConfig) -> Block:
+        """Create a block from configuration"""
+        return cls(
+            ln_1=LayerNorm.from_config(config),
+            attn=CausalSelfAttention.from_config(config),
+            ln_2=LayerNorm.from_config(config),
+            mlp=MLP.from_config(config),
+        )
+
+    def __call__(self, x: jax.Array) -> jax.Array:
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
         return x
