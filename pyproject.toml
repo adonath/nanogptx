@@ -1,0 +1,11 @@
+[project]
+name = "from-scratch-in-jax-nano-gpt"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "jax>=0.4.30",
+    "requests>=2.32.3",
+    "safetensors>=0.4.5",
+]
