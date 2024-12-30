@@ -1,3 +1,4 @@
 uv.lock
 data/
 __pycache__/
+.python-version
