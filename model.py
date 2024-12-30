@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass
 
+from utils import Config
+
 
 @dataclass
-class GPTConfig:
+class GPTConfig(Config):
     """GPT configuration"""
 
     block_size: int = 1024
