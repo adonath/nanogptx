@@ -88,6 +88,18 @@ class LayerNorm:
     bias: Optional[jax.Array] = None
     eps: ClassVar[float] = 1e-5
 
+    @classmethod
+    def from_n_features(cls, n_embd: int, use_bias: bool = True):
+        """Create a layer normalization layer from number of features"""
+        weight = jnp.ones((n_embd,))
+        bias = jnp.zeros((n_embd,)) if use_bias else None
+        return cls(weight=weight, bias=bias)
+
+    @classmethod
+    def from_config(cls, config: GPTConfig) -> LayerNorm:
+        """Create a layer normalization layer from configuration"""
+        return cls.from_n_features(config.n_embd, use_bias=config.use_bias)
+
     def __call__(self, x):
         mean = jnp.mean(x, axis=Axis.feature, keepdims=True)
         var = jnp.var(x, axis=Axis.feature, keepdims=True)
@@ -98,13 +110,6 @@ class LayerNorm:
             x = x + self.bias
 
         return x
-
-    @classmethod
-    def from_config(cls, config: GPTConfig) -> LayerNorm:
-        """Create a layer normalization layer from configuration"""
-        weight = jnp.ones((config.n_embd,))
-        bias = jnp.zeros((config.n_embd,)) if config.use_bias else None
-        return cls(weight=weight, bias=bias)
 
 
 @register_dataclass_jax(meta_fields=["rate"])
@@ -210,4 +215,56 @@ class MLP:
         x = self.gelu(x)
         x = self.c_proj(x)
         x = self.dropout(x, key=key)
+        return x
+
+
+@register_dataclass_jax(
+    data_fields=["c_attn", "c_proj", "attn_dropout", "resid_dropout"],
+    meta_fields=["n_head"],
+)
+@dataclass
+class CausalSelfAttention:
+    """Causal self-attention layer"""
+
+    c_attn: Linear
+    c_proj: Linear
+    attn_dropout: Dropout
+    resid_dropout: Dropout
+    n_head: int
+
+    @classmethod
+    def from_config(cls, config):
+        """Create a causal self-attention layer from configuration"""
+        return cls(
+            c_attn=Linear.from_n_features(
+                config.n_embd,
+                config.n_embd_attn,
+                key=config.generate_key(),
+                use_bias=config.use_bias,
+            ),
+            c_proj=Linear.from_n_features(
+                config.n_embd_attn,
+                config.n_embd,
+                key=config.generate_key(),
+                use_bias=config.use_bias,
+            ),
+            n_head=config.n_head,
+            attn_dropout=Dropout(config.dropout_rate),
+            resid_dropout=Dropout(config.dropout_rate),
+        )
+
+    def __call__(self, x, key):
+        query, key, value = jnp.split(self.c_attn(x), 3, axis=Axis.feature)
+
+        shape = (x.shape[Axis.batch], x.shape[Axis.sequence], self.n_head, -1)
+        query = jnp.reshape(query, shape)
+        key = jnp.reshape(key, shape)
+        value = jnp.reshape(value, shape)
+
+        x = jax.nn.dot_product_attention(
+            query=query,
+            key=key,
+            value=value,
+            is_causal=True,
+        )
         return x
