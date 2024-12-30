@@ -1,7 +1,10 @@
 """Here are some thoughts on how to structure the code"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
+from typing import ClassVar, Optional
 
 import jax
 from jax import numpy as jnp
@@ -74,3 +77,31 @@ class Embedding:
 
     def __call__(self, x):
         return jnp.take(self.weight, x, axis=0)
+
+
+@register_dataclass_jax(data_fields=["weight", "bias"])
+@dataclass(frozen=True)
+class LayerNorm:
+    """Layer normalization"""
+
+    weight: jax.Array
+    bias: Optional[jax.Array] = None
+    eps: ClassVar[float] = 1e-5
+
+    def __call__(self, x):
+        mean = jnp.mean(x, axis=Axis.feature, keepdims=True)
+        var = jnp.var(x, axis=Axis.feature, keepdims=True)
+
+        x = (x - mean) / jnp.sqrt((var + self.eps)) * self.weight
+
+        if self.bias is not None:
+            x = x + self.bias
+
+        return x
+
+    @classmethod
+    def from_config(cls, config: GPTConfig) -> LayerNorm:
+        """Create a layer normalization layer from configuration"""
+        weight = jnp.ones((config.n_embd,))
+        bias = jnp.zeros((config.n_embd,)) if config.use_bias else None
+        return cls(weight=weight, bias=bias)
