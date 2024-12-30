@@ -124,3 +124,12 @@ class Dropout:
     def from_config(cls, config):
         """Create a dropout layer from configuration"""
         return cls(rate=config.dropout_rate)
+
+
+class Gelu:
+    """Gaussian Error Linear Unit"""
+
+    approximate: bool = True
+
+    def __call__(self, x):
+        return jax.nn.gelu(x, approximate=self.approximate)
