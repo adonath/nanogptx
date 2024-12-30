@@ -105,3 +105,22 @@ class LayerNorm:
         weight = jnp.ones((config.n_embd,))
         bias = jnp.zeros((config.n_embd,)) if config.use_bias else None
         return cls(weight=weight, bias=bias)
+
+
+@register_dataclass_jax(meta_fields=["rate"])
+@dataclass
+class Dropout:
+    """Dropout layer"""
+
+    rate: float = 0.1
+
+    def __call__(self, x, key, is_training):
+        if is_training:
+            return jax.nn.dropout(x, key=key, rate=self.rate)
+
+        return x
+
+    @classmethod
+    def from_config(cls, config):
+        """Create a dropout layer from configuration"""
+        return cls(rate=config.dropout_rate)
