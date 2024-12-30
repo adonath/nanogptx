@@ -174,3 +174,40 @@ class Linear:
 
     def __call__(self, x):
         return jnp.matmul(x, self.weight.mT) + self.bias
+
+
+@register_dataclass_jax(data_fields=["c_fc", "gelu", "c_proj", "dropout"])
+@dataclass(frozen=True)
+class MLP:
+    """Multi-layer perceptron"""
+
+    c_fc: Linear
+    gelu: Gelu
+    c_proj: Linear
+    dropout: Dropout
+
+    @classmethod
+    def from_config(cls, config):
+        """Create an MLP layer from configuration"""
+        c_fc = Linear.from_n_features(
+            config.n_embd,
+            config.n_embd_mlp,
+            use_bias=config.use_bias,
+            key=config.generate_key(),
+        )
+        c_proj = Linear.from_n_features(
+            config.n_embd_mlp,
+            config.n_embd,
+            use_bias=config.use_bias,
+            key=config.generate_key(),
+        )
+        return cls(
+            c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
+        )
+
+    def __call__(self, x, key) -> jax.Array:
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x, key=key)
+        return x
