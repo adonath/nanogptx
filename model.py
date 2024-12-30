@@ -298,3 +298,50 @@ class Block:
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
+
+
+@register_dataclass_jax(data_fields=["wte", "wpe", "drop", "h", "ln_f", "lm_head"])
+@dataclass(frozen=True)
+class GPT:
+    """GPT Transformer model"""
+
+    wte: Embedding
+    wpe: Embedding
+    drop: Dropout
+    h: list[Block]
+    ln_f: LayerNorm
+    lm_head: Linear
+
+    def __post_init__(self):
+        # Tie weights
+        self.wte.weight.at[:].set(self.lm_head.weight)
+
+    def __call__(self, x):
+        logits = None
+        return logits
+
+    @classmethod
+    def from_config(cls, config):
+        """Create a GPT model from configuration"""
+        return cls(
+            wte=Embedding.from_config(config),
+            wpe=Embedding.from_n_features(
+                config.block_size, config.n_embd, key=config.generate_key()
+            ),
+            drop=Dropout.from_config(config),
+            h=[Block.from_config(config) for _ in range(config.n_layer)],
+            ln_f=LayerNorm.from_config(config),
+            lm_head=Linear.from_n_features(
+                config.n_embd,
+                config.vocab_size,
+                key=config.generate_key(),
+                use_bias=False,
+            ),
+        )
+
+    @property
+    def n_parameters(self):
+        """Number of parameters"""
+        return sum(
+            p.size if isinstance(p, jax.Array) else 0 for p in jax.tree_leaves(self)
+        )
