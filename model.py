@@ -133,3 +133,44 @@ class Gelu:
 
     def __call__(self, x):
         return jax.nn.gelu(x, approximate=self.approximate)
+
+
+@register_dataclass_jax(data_fields=["weight", "bias"])
+@dataclass
+class Linear:
+    """Linear layer"""
+
+    weight: jax.Array
+    bias: Optional[jax.Array] = None
+
+    @property
+    def n_in(self):
+        """Number of input features"""
+        return self.weight.shape[Axis.feature]
+
+    @property
+    def n_out(self):
+        """Number of output features"""
+        return self.weight.shape[Axis.sequence]
+
+    @classmethod
+    def from_n_features(
+        cls, n_in: int, n_out: int, key: jax.Array, use_bias: bool = True
+    ):
+        """Create a linear layer from number of features"""
+        weight = jax.random.normal(key, (n_out, n_in))
+        bias = jnp.zeros(n_out) if use_bias else None
+        return cls(weight=weight, bias=bias)
+
+    @classmethod
+    def from_config(cls, config):
+        """Create a linear layer from configuration"""
+        return cls.from_n_features(
+            config.n_embd,
+            config.n_embd_mlp,
+            key=config.generate_key(),
+            use_bias=config.use_bias,
+        )
+
+    def __call__(self, x):
+        return jnp.matmul(x, self.weight.mT) + self.bias
