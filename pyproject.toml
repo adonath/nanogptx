@@ -1,7 +1,7 @@
 [project]
 name = "from-scratch-in-jax-nano-gpt"
 version = "0.1.0"
-description = "Add your description here"
+description = "A pure JAX implementation of nano GPT-2"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
