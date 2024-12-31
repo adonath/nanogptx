@@ -5,6 +5,7 @@ from typing import Any, Optional
 import jax
 import tomli_w
 import tomllib
+from jax import tree_util
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,27 @@ class register_dataclass_jax:
             meta_fields=self.meta_fields,
         )
         return cls
+
+
+def assert_shapes_equal(pytree, other_pytree):
+    """Assert that the array shapes of two models are equal."""
+    paths, treedef = tree_util.tree_flatten_with_path(pytree)
+    paths_other, treedef_other = tree_util.tree_flatten_with_path(other_pytree)
+
+    if not treedef == treedef_other:
+        message = f"Tree definitions do not match, got {treedef} and {treedef_other}"
+        raise ValueError(message)
+
+    for (path, value), (_, value_other) in zip(paths, paths_other):
+        if value.shape != value_other.shape:
+            message = f"Shape mismatch at path {join_path(path)}, got {value.shape} and {value_other.shape}"
+            raise ValueError(message)
+
+
+def join_path(path):
+    """Join path to Pytree leave"""
+    values = [getattr(_, "name", str(getattr(_, "idx", None))) for _ in path]
+    return ".".join(values)
 
 
 @dataclass
