@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
+from re import sub
 from typing import ClassVar, Optional
 
 import jax
@@ -42,15 +44,15 @@ class GPTConfig(Config):
 
     @property
     def n_embd_attn(self) -> int:
-        """Hidden embedding size for the attention"""
+        """Embedding size for the stacked qkv attention"""
         return 3 * self.n_embd
 
-    def generate_key(self) -> jax.Array:
+    def generate_rng_key(self) -> jax.Array:
         """Generate random key for initialization"""
         if self._key is None:
             self._key = jax.random.PRNGKey(self.seed)
 
-        # in genral state based key generation is not a good idea in Jax!
+        # in general state based key generation is not a good idea in Jax!
         # however the config class never(!) crosses any jit and function transform
         # boundaries.
 
@@ -66,9 +68,9 @@ class Embedding:
     weight: jax.Array
 
     @classmethod
-    def from_n_features(cls, vocab_size: int, n_embd: int, key: jax.Array):
+    def from_n_features(cls, vocab_size: int, n_embd: int, rng_key: jax.Array):
         """Create an embedding layer from number of features"""
-        return cls(weight=jax.random.normal(key, (vocab_size, n_embd)))
+        return cls(weight=jax.random.normal(rng_key, (vocab_size, n_embd)))
 
     @classmethod
     def from_config(cls, config):
@@ -76,7 +78,7 @@ class Embedding:
         return cls.from_n_features(
             vocab_size=config.vocab_size,
             n_embd=config.n_embd,
-            key=config.generate_key(),
+            rng_key=config.generate_rng_key(),
         )
 
     def __call__(self, x):
@@ -93,16 +95,16 @@ class LayerNorm:
     eps: ClassVar[float] = 1e-5
 
     @classmethod
-    def from_n_features(cls, n_embd: int, use_bias: bool = True):
+    def from_n_dim(cls, n_dim: int, use_bias: bool = True):
         """Create a layer normalization layer from number of features"""
-        weight = jnp.ones((n_embd,))
-        bias = jnp.zeros((n_embd,)) if use_bias else None
+        weight = jnp.ones((n_dim,))
+        bias = jnp.zeros((n_dim,)) if use_bias else None
         return cls(weight=weight, bias=bias)
 
     @classmethod
     def from_config(cls, config: GPTConfig) -> LayerNorm:
         """Create a layer normalization layer from configuration"""
-        return cls.from_n_features(config.n_embd, use_bias=config.use_bias)
+        return cls.from_n_dim(config.n_embd, use_bias=config.use_bias)
 
     def __call__(self, x):
         mean = jnp.mean(x, axis=Axis.feature, keepdims=True)
@@ -123,9 +125,12 @@ class Dropout:
 
     rate: float = 0.1
 
-    def __call__(self, x, key, is_training):
+    def __call__(self, x, rng_key, is_training):
         if is_training:
-            return jax.nn.dropout(x, key=key, rate=self.rate)
+            # taken from https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/_dropout.py#L95C13-L97C45
+            q = 1 - jax.lax.stop_gradient(self.rate)
+            mask = jax.random.bernoulli(rng_key, q, x.shape)
+            return jnp.where(mask, x / q, 0)
 
         return x
 
@@ -135,6 +140,8 @@ class Dropout:
         return cls(rate=config.dropout_rate)
 
 
+@register_dataclass_jax(meta_fields=["approximate"])
+@dataclass
 class Gelu:
     """Gaussian Error Linear Unit"""
 
@@ -164,10 +171,10 @@ class Linear:
 
     @classmethod
     def from_n_features(
-        cls, n_in: int, n_out: int, key: jax.Array, use_bias: bool = True
+        cls, n_in: int, n_out: int, rng_key: jax.Array, use_bias: bool = True
     ):
         """Create a linear layer from number of features"""
-        weight = jax.random.normal(key, (n_out, n_in))
+        weight = jax.random.normal(rng_key, (n_out, n_in))
         bias = jnp.zeros(n_out) if use_bias else None
         return cls(weight=weight, bias=bias)
 
@@ -177,12 +184,17 @@ class Linear:
         return cls.from_n_features(
             config.n_embd,
             config.n_embd_mlp,
-            key=config.generate_key(),
+            rng_key=config.generate_rng_key(),
             use_bias=config.use_bias,
         )
 
     def __call__(self, x):
-        return jnp.matmul(x, self.weight.mT) + self.bias
+        x = jnp.matmul(x, self.weight.mT)
+
+        if self.bias is not None:
+            x = x + self.bias
+
+        return x
 
 
 @register_dataclass_jax(data_fields=["c_fc", "gelu", "c_proj", "dropout"])
@@ -202,23 +214,25 @@ class MLP:
             config.n_embd,
             config.n_embd_mlp,
             use_bias=config.use_bias,
-            key=config.generate_key(),
+            rng_key=config.generate_rng_key(),
         )
         c_proj = Linear.from_n_features(
             config.n_embd_mlp,
             config.n_embd,
             use_bias=config.use_bias,
-            key=config.generate_key(),
+            rng_key=config.generate_rng_key(),
         )
         return cls(
             c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
         )
 
-    def __call__(self, x, key) -> jax.Array:
+    def __call__(self, x, rng_key, is_training) -> jax.Array:
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
-        x = self.dropout(x, key=key)
+
+        rng_key, _ = jax.random.split(rng_key)
+        x = self.dropout(x, rng_key=rng_key, is_training=is_training)
         return x
 
 
@@ -243,13 +257,13 @@ class CausalSelfAttention:
             c_attn=Linear.from_n_features(
                 config.n_embd,
                 config.n_embd_attn,
-                key=config.generate_key(),
+                rng_key=config.generate_rng_key(),
                 use_bias=config.use_bias,
             ),
             c_proj=Linear.from_n_features(
-                config.n_embd_attn,
                 config.n_embd,
-                key=config.generate_key(),
+                config.n_embd,
+                rng_key=config.generate_rng_key(),
                 use_bias=config.use_bias,
             ),
             n_head=config.n_head,
@@ -257,7 +271,7 @@ class CausalSelfAttention:
             resid_dropout=Dropout(config.dropout_rate),
         )
 
-    def __call__(self, x, key):
+    def __call__(self, x, rng_key, is_training):
         query, key, value = jnp.split(self.c_attn(x), 3, axis=Axis.feature)
 
         shape = (x.shape[Axis.batch], x.shape[Axis.sequence], self.n_head, -1)
@@ -271,6 +285,11 @@ class CausalSelfAttention:
             value=value,
             is_causal=True,
         )
+
+        x = jnp.reshape(x, (x.shape[Axis.batch], x.shape[Axis.sequence], -1))
+
+        x = self.c_proj(x)
+        x = self.resid_dropout(x, rng_key=rng_key, is_training=is_training)
         return x
 
 
@@ -294,9 +313,9 @@ class Block:
             mlp=MLP.from_config(config),
         )
 
-    def __call__(self, x: jax.Array) -> jax.Array:
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+    def __call__(self, x, rng_key, is_training) -> jax.Array:
+        x = x + self.attn(self.ln_1(x), rng_key=rng_key, is_training=is_training)
+        x = x + self.mlp(self.ln_2(x), rng_key=rng_key, is_training=is_training)
         return x
 
 
@@ -316,8 +335,22 @@ class GPT:
         # Tie weights
         self.wte.weight.at[:].set(self.lm_head.weight)
 
-    def __call__(self, x):
-        logits = None
+    @partial(jax.jit, static_argnums=(3,))
+    def __call__(self, idx, rng_key, is_training):
+        pos = jnp.arange(idx.shape[Axis.sequence])
+
+        tok_emb = self.wte(idx)
+        pos_emb = self.wpe(pos)
+
+        rng_key, sub_rng_key = jax.random.split(rng_key)
+        x = self.drop(tok_emb + pos_emb, rng_key=sub_rng_key, is_training=is_training)
+
+        for block in self.h:
+            rng_key, sub_rng_key = jax.random.split(rng_key)
+            x = block(x, rng_key=sub_rng_key, is_training=is_training)
+
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
         return logits
 
     @classmethod
@@ -326,7 +359,7 @@ class GPT:
         return cls(
             wte=Embedding.from_config(config),
             wpe=Embedding.from_n_features(
-                config.block_size, config.n_embd, key=config.generate_key()
+                config.block_size, config.n_embd, rng_key=config.generate_rng_key()
             ),
             drop=Dropout.from_config(config),
             h=[Block.from_config(config) for _ in range(config.n_layer)],
@@ -334,14 +367,18 @@ class GPT:
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
-                key=config.generate_key(),
+                rng_key=config.generate_rng_key(),
                 use_bias=False,
             ),
         )
 
-    @property
-    def n_parameters(self):
+    def n_parameters(self, non_embedding=True):
         """Number of parameters"""
-        return sum(
+        n_parameters = sum(
             p.size if isinstance(p, jax.Array) else 0 for p in jax.tree_leaves(self)
         )
+
+        if non_embedding:
+            n_parameters -= self.wte.weight.size
+
+        return n_parameters
