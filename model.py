@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
+from pathlib import Path
 from typing import ClassVar, Optional
 
 import jax
@@ -13,6 +15,19 @@ from jax import tree_util
 from safetensors.flax import load_file
 
 from utils import Config, join_path, register_dataclass_jax
+
+log = logging.getLogger(__name__)
+
+PATH = Path(__file__).parent
+
+
+class PretrainedModels(str, Enum):
+    """Pretrained models"""
+
+    gpt2 = "gpt2"
+    gpt2_medium = "gpt2-medium"
+    gpt2_large = "gpt2-large"
+    gpt2_xl = "gpt2-xl"
 
 
 class Axis(int, Enum):
@@ -425,6 +440,19 @@ class GPT:
         return n_parameters
 
     @classmethod
+    def from_pretrained(cls, model_type) -> GPT:
+        """From pretrained model"""
+        model_type = PretrainedModels(model_type)
+        path = PATH / f"data/{model_type.value}/model.safetensors"
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Model {model_type.value} not available. Download weights using 'download.py' first."
+            )
+
+        return cls.read(path)
+
+    @classmethod
     def read(cls, path) -> GPT:
         """Read model from file"""
         # create a dummy model to get the equivalent PyTree structure
@@ -434,6 +462,7 @@ class GPT:
 
         data_model = {join_path(path): value for path, value in paths}
 
+        log.info(f"Reading model from {path}")
         data = load_file(path)
 
         # tied parameters are missing, just creat a reference as placeholder
