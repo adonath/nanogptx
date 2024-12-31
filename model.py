@@ -12,7 +12,7 @@ from typing import ClassVar, Optional
 import jax
 from jax import numpy as jnp
 from jax import tree_util
-from safetensors.flax import load_file
+from safetensors.flax import load_file, save_file
 
 from utils import Config, join_path, register_dataclass_jax
 
@@ -77,8 +77,7 @@ class GPTConfig(Config):
 
         # in general state based key generation is not a good idea in Jax!
         # however the config class never(!) crosses any jit and function transform
-        # boundaries.
-
+        # boundaries. So it is safe to use it here.
         self._key, subkey = jax.random.split(self._key)
         return subkey
 
@@ -453,9 +452,10 @@ class GPT:
         return cls.read(path)
 
     @classmethod
-    def read(cls, path) -> GPT:
-        """Read model from file"""
-        # create a dummy model to get the equivalent PyTree structure
+    def read(cls, path, format=None) -> GPT:
+        """Read model from safetensors file"""
+        # create a dummy model to get the equivalent PyTree structure, this
+        # not nice, but jax does allow generate a PyTree from static definitions
         dummy_model = GPT.from_config(GPTConfig.dummy())
 
         paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
@@ -482,3 +482,11 @@ class GPT:
                 data_model[key] = data_model[key].T
 
         return tree_util.tree_unflatten(treedef, data_model.values())
+
+    def write(self, path):
+        """Write model to safetensors file"""
+        paths, _ = tree_util.tree_flatten_with_path(self)
+        data = {join_path(path): value for path, value in paths}
+
+        log.info(f"Writing model to {path}")
+        save_file(data, path)
