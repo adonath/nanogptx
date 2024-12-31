@@ -5,13 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from re import sub
 from typing import ClassVar, Optional
 
 import jax
 from jax import numpy as jnp
+from jax import tree_util
+from safetensors.flax import load_file
 
-from utils import Config, register_dataclass_jax
+from utils import Config, join_path, register_dataclass_jax
 
 
 class Axis(int, Enum):
@@ -20,6 +21,13 @@ class Axis(int, Enum):
     batch = 0
     sequence = 1
     feature = 2
+
+
+class EmbeddingAxis(int, Enum):
+    """Axis order for embeddings"""
+
+    vocab = 0
+    embd = 1
 
 
 @dataclass
@@ -59,6 +67,17 @@ class GPTConfig(Config):
         self._key, subkey = jax.random.split(self._key)
         return subkey
 
+    @classmethod
+    def dummy(cls, n_layer: int = 12, n_head: int = 12):
+        """Dummy configuration to create a model without parameters but with equivalent PyTree structure"""
+        return cls(
+            block_size=0,
+            vocab_size=0,
+            n_layer=n_layer,
+            n_head=n_head,
+            n_embd=0,
+        )
+
 
 @register_dataclass_jax(data_fields=["weight"])
 @dataclass(frozen=True)
@@ -66,6 +85,16 @@ class Embedding:
     """Embedding layer"""
 
     weight: jax.Array
+
+    @property
+    def vocab_size(self):
+        """Vocabulary size"""
+        return self.weight.shape[EmbeddingAxis.vocab]
+
+    @property
+    def n_embd(self):
+        """Number of embeddings"""
+        return self.weight.shape[EmbeddingAxis.embd]
 
     @classmethod
     def from_n_features(cls, vocab_size: int, n_embd: int, rng_key: jax.Array):
@@ -333,9 +362,9 @@ class GPT:
 
     def __post_init__(self):
         # Tie weights
-        self.wte.weight.at[:].set(self.lm_head.weight)
+        self.lm_head.weight.at[:].set(self.wte.weight)
 
-    @partial(jax.jit, static_argnums=(3,))
+    @partial(jax.jit, static_argnames=("is_training",))
     def __call__(self, idx, rng_key, is_training):
         pos = jnp.arange(idx.shape[Axis.sequence])
 
@@ -352,6 +381,18 @@ class GPT:
         x = self.ln_f(x)
         logits = self.lm_head(x)
         return logits
+
+    def to_config(self):
+        """Return configuration for model"""
+        return GPTConfig(
+            block_size=self.wpe.vocab_size,
+            vocab_size=self.wte.vocab_size,
+            n_layer=len(self.h),
+            n_head=self.h[0].attn.n_head,
+            n_embd=self.wte.n_embd,
+            dropout_rate=self.drop.rate,
+            use_bias=self.ln_f.bias is not None,
+        )
 
     @classmethod
     def from_config(cls, config):
@@ -382,3 +423,33 @@ class GPT:
             n_parameters -= self.wte.weight.size
 
         return n_parameters
+
+    @classmethod
+    def read(cls, path) -> GPT:
+        """Read model from file"""
+        # create a dummy model to get the equivalent PyTree structure
+        dummy_model = GPT.from_config(GPTConfig.dummy())
+
+        paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
+
+        data_model = {join_path(path): value for path, value in paths}
+
+        data = load_file(path)
+
+        # tied parameters are missing, just creat a reference as placeholder
+        data["lm_head.weight"] = data["wte.weight"]
+
+        transposed = [
+            "attn.c_attn.weight",
+            "attn.c_proj.weight",
+            "mlp.c_fc.weight",
+            "mlp.c_proj.weight",
+        ]
+
+        for key in data_model:
+            data_model[key] = data[key]
+
+            if any(key.endswith(_) for _ in transposed):
+                data_model[key] = data_model[key].T
+
+        return tree_util.tree_unflatten(treedef, data_model.values())
