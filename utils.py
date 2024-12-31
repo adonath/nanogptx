@@ -9,6 +9,8 @@ from jax import tree_util
 
 log = logging.getLogger(__name__)
 
+TAB_WIDTH = 4
+
 
 class register_dataclass_jax:
     """Decorator to register a dataclass with JAX."""
@@ -74,3 +76,7 @@ class Config:
     def update(self, **kwds):
         """Update configuration"""
         return replace(self, **kwds)
+
+    def __str__(self):
+        data = {str(self.__class__.__name__): asdict(self)}
+        return tomli_w.dumps(data, indent=TAB_WIDTH)
