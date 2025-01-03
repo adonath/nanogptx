@@ -396,10 +396,15 @@ class GPT:
         logits = self.lm_head(x)
         return logits
 
+    @property
+    def block_size(self):
+        """Block size"""
+        return self.wpe.vocab_size
+
     def to_config(self):
         """Return configuration for model"""
         return GPTConfig(
-            block_size=self.wpe.vocab_size,
+            block_size=self.block_size,
             vocab_size=self.wte.vocab_size,
             n_layer=len(self.h),
             n_head=self.h[0].attn.n_head,
@@ -454,7 +459,7 @@ class GPT:
     @classmethod
     def read(cls, path, format=None) -> GPT:
         """Read model from safetensors file"""
-        # create a dummy model to get the equivalent PyTree structure, this
+        # create a dummy model to get the equivalent PyTree structure, this is
         # not nice, but jax does allow generate a PyTree from static definitions
         dummy_model = GPT.from_config(GPTConfig.dummy())
 
@@ -490,3 +495,37 @@ class GPT:
 
         log.info(f"Writing model to {path}")
         save_file(data, path)
+
+    def generate(self, idx, max_new_tokens, rng_key, temperature=1.0, top_k=None):
+        """Generate new tokens"""
+        top_k = min(top_k, self.wte.vocab_size) if top_k is not None else None
+
+        for _ in range(max_new_tokens):
+            # if the sequence context is growing too long we must crop it at block_size
+            idx_cond = (
+                idx if len(idx) <= self.block_size else idx[:, -self.block_size :]
+            )
+            logits = self(idx_cond, rng_key=rng_key, is_training=False)
+            logits = logits[:, -1:, :] / temperature
+
+            # optionally crop the logits to only the top k options
+            if top_k is not None:
+                values, indices = jax.lax.top_k(logits, top_k)
+            else:
+                values, indices = logits, jnp.arange(self.wte.vocab_size)
+
+            # apply softmax to convert logits to (normalized) probabilities
+            probs = jax.nn.softmax(values, axis=-1)
+            # sample from the distribution
+            rng_key, sub_rng_key = jax.random.split(rng_key)
+            idx_next = jax.random.choice(
+                sub_rng_key,
+                indices.flatten(),
+                p=probs.flatten(),
+                shape=(1, 1),
+            )
+
+            # append sampled index to the running sequence and continue
+            idx = jnp.concat((idx, idx_next), axis=Axis.sequence)
+
+        return idx
