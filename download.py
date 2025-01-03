@@ -26,7 +26,7 @@ def download_weights(key):
     log.info(f"Downloading from {url}")
     response = requests.get(url, params={"download": True})
 
-    path = DATA_PATH / key.value / Path(url).name
+    path = DATA_PATH / "models" / key.value / Path(url).name
     path.parent.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Saving to {path}")
