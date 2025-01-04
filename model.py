@@ -317,7 +317,12 @@ class CausalSelfAttention:
     def __call__(self, x, rng_key, is_training):
         query, key, value = jnp.split(self.c_attn(x), 3, axis=Axis.feature)
 
-        shape = (x.shape[Axis.batch], x.shape[Axis.sequence], self.n_head, -1)
+        shape = (
+            x.shape[Axis.batch],
+            x.shape[Axis.sequence],
+            self.n_head,
+            x.shape[Axis.feature] // self.n_head,
+        )
         query = jnp.reshape(query, shape)
         key = jnp.reshape(key, shape)
         value = jnp.reshape(value, shape)
@@ -330,7 +335,6 @@ class CausalSelfAttention:
         )
 
         x = jnp.reshape(x, (x.shape[Axis.batch], x.shape[Axis.sequence], -1))
-
         x = self.c_proj(x)
         x = self.resid_dropout(x, rng_key=rng_key, is_training=is_training)
         return x
@@ -457,7 +461,7 @@ class GPT:
         return cls.read(path)
 
     @classmethod
-    def read(cls, path, format=None) -> GPT:
+    def read(cls, path, transpose_weights=True) -> GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
         # not nice, but jax does allow generate a PyTree from static definitions
@@ -483,7 +487,7 @@ class GPT:
         for key in data_model:
             data_model[key] = data[key]
 
-            if any(key.endswith(_) for _ in transposed):
+            if any(key.endswith(_) for _ in transposed) and transpose_weights:
                 data_model[key] = data_model[key].T
 
         return tree_util.tree_unflatten(treedef, data_model.values())
@@ -501,22 +505,19 @@ class GPT:
         top_k = min(top_k, self.wte.vocab_size) if top_k is not None else None
 
         for _ in range(max_new_tokens):
-            # if the sequence context is growing too long we must crop it at block_size
             idx_cond = (
                 idx if len(idx) <= self.block_size else idx[:, -self.block_size :]
             )
             logits = self(idx_cond, rng_key=rng_key, is_training=False)
             logits = logits[:, -1:, :] / temperature
 
-            # optionally crop the logits to only the top k options
             if top_k is not None:
                 values, indices = jax.lax.top_k(logits, top_k)
             else:
                 values, indices = logits, jnp.arange(self.wte.vocab_size)
 
-            # apply softmax to convert logits to (normalized) probabilities
             probs = jax.nn.softmax(values, axis=-1)
-            # sample from the distribution
+
             rng_key, sub_rng_key = jax.random.split(rng_key)
             idx_next = jax.random.choice(
                 sub_rng_key,
@@ -524,8 +525,6 @@ class GPT:
                 p=probs.flatten(),
                 shape=(1, 1),
             )
-
-            # append sampled index to the running sequence and continue
             idx = jnp.concat((idx, idx_next), axis=Axis.sequence)
 
         return idx
