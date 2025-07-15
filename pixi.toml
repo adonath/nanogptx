@@ -1,0 +1,13 @@
+[workspace]
+authors = ["Axel Donath <axel.donath@cfa.harvard.edu>"]
+channels = ["conda-forge"]
+name = "from-scratch-in-jax-nano-gpt"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+jax = ">=0.6.0,<0.7"
+safetensors = ">=0.5.3,<0.6"
+click = ">=8.2.1,<9"
