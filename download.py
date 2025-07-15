@@ -1,7 +1,7 @@
-import argparse
 import logging
 from pathlib import Path
 
+import click
 import requests
 
 from model import PretrainedModels
@@ -19,15 +19,22 @@ URLS = {
 }
 
 
-def download_weights(key):
+@click.command()
+@click.option("--model", default="gpt2", type=click.Choice(URLS), help="Which model weights to download")
+def download_weights(model):
     """Download GPT2 weights from Huggingface"""
-    url = URLS[PretrainedModels(key)]
-
-    log.info(f"Downloading from {url}")
-    response = requests.get(url, params={"download": True})
+    key = PretrainedModels(model)
+    url = URLS[key]
 
     path = DATA_PATH / "models" / key.value / Path(url).name
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists():
+        log.info(f"{path} already exists, skipping download!")
+        return path
+
+    log.info(f"Downloading from {url}")
+    response = requests.get(url, params={"download": True})
 
     log.info(f"Saving to {path}")
     with open(path, mode="wb") as file:
@@ -37,14 +44,4 @@ def download_weights(key):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=download_weights.__doc__)
-
-    choices = [model.value for model in PretrainedModels]
-
-    parser.add_argument("key", choices=choices + ["all"], help="Model identifier")
-    args = parser.parse_args()
-
-    keys = choices if args.key == "all" else [args.key]
-
-    for key in keys:
-        download_weights(key)
+    download_weights()
