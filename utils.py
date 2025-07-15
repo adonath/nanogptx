@@ -1,7 +1,8 @@
 import logging
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from typing import Any, Optional
 
+import click
 import jax
 import tomli_w
 import tomllib
@@ -80,3 +81,36 @@ class Config:
     def __str__(self):
         data = {str(self.__class__.__name__): asdict(self)}
         return tomli_w.dumps(data, indent=TAB_WIDTH)
+
+
+def dataclass_to_click_options(datacls):
+    """Decorator to add click options for each dataclass field.
+    The help string is taken from the field's metadata['help'] if present.
+    """
+
+    def decorator(f):
+        for field in reversed(fields(datacls)):
+            param_decls = [f"--{field.name.replace('_', '-')}"]
+            option_kwargs = {
+                "default": field.default
+                if field.default is not field.default_factory
+                else None,
+                "show_default": True,
+                "type": field.type if field.type in [int, float, str, bool] else str,
+                "help": field.metadata.get("help", "")
+                if "help" in field.metadata
+                else "",
+            }
+            # Remove default if it's a _MISSING_TYPE (i.e., required argument)
+            if option_kwargs["default"] is None:
+                option_kwargs.pop("default")
+                option_kwargs["required"] = True
+
+            # For bool, use is_flag
+            if field.type is bool:
+                option_kwargs["is_flag"] = True
+                option_kwargs.pop("type")
+            f = click.option(*param_decls, **option_kwargs)(f)
+        return f
+
+    return decorator
