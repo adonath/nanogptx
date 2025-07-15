@@ -1,4 +1,5 @@
-uv.lock
+*.lock
 data/
 __pycache__/
-.python-version
+.python-version# pixi environments
+.pixi
