@@ -1,60 +1,29 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 import tiktoken
+import tyro
 from model import GPT, PretrainedModels
-from utils import JAX_DEVICES, JAX_DTYPES, Config
+from utils import JAX_DEVICES, JAX_DTYPES, Config, JaxDevicesEnum, JaxDtypesEnum
 
 PREFIX = "FILE:"
 
 
 @dataclass(kw_only=True)
 class SampleConfig(Config):
-    """Evaluation configuration"""
+    """Sampling configuration"""
 
-    init_from: str = field(
-        default="gpt2",
-        metadata={
-            "help": "Initialization source",
-            "choices": [e.value for e in PretrainedModels],
-        },
-    )
-    out_dir: str = field(
-        default="out",
-        metadata={"help": "Output directory (ignored if init_from is not 'resume')"},
-    )
-    start: str = field(
-        default="\n",
-        metadata={
-            "help": f"Prompt string or file (e.g., '\n', '<|endoftext|>', or '{PREFIX}prompt.txt')"
-        },
-    )
-    num_samples: int = field(default=10, metadata={"help": "Number of samples to draw"})
-    max_new_tokens: int = field(
-        default=500, metadata={"help": "Number of tokens generated in each sample"}
-    )
-    temperature: float = field(
-        default=0.8,
-        metadata={
-            "help": "Sampling temperature (1.0 = no change, < 1.0 = less random, > 1.0 = more random)"
-        },
-    )
-    top_k: int = field(
-        default=200,
-        metadata={
-            "help": "Retain only the top_k most likely tokens, clamp others to have 0 probability"
-        },
-    )
-    seed: int = field(default=1337, metadata={"help": "Random seed"})
-    device: str = field(
-        default=list(JAX_DEVICES)[0],
-        metadata={"help": "Device to use", "choices": list(JAX_DEVICES)},
-    )
-    dtype: str = field(
-        default=list(JAX_DTYPES)[0],
-        metadata={"help": "Data type", "choices": list(JAX_DTYPES)},
-    )
+    init_from: PretrainedModels = PretrainedModels.gpt2  # Initialization source
+    out_dir: str = "out"  # Output directory (ignored if init_from is not 'resume')
+    start: str = "\n"  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
+    num_samples: int = 10  # Number of samples to draw
+    max_new_tokens: int = 500  # Number of tokens generated in each sample
+    temperature: float = 0.8  # Sampling temperature (1.0 = no change, < 1.0 = less random, > 1.0 = more random)
+    top_k: int = 200  # Retain only the top_k most likely tokens, clamp others to have 0 probability
+    seed: int = 1337  # Random seed
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]  # Device to use
+    dtype: JaxDtypesEnum = list(JAX_DTYPES)[0]  # Data type
 
     @property
     def prompt(self):
@@ -62,7 +31,6 @@ class SampleConfig(Config):
         if self.start.startswith(PREFIX):
             with open(self.start[len(PREFIX) :], "r", encoding="utf-8") as f:
                 return f.read()
-
         return self.start
 
 
@@ -95,5 +63,5 @@ def sample(config):
 
 
 if __name__ == "__main__":
-    config = SampleConfig.from_argparse()
+    config = tyro.cli(SampleConfig)
     sample(config=config)

@@ -1,6 +1,6 @@
-import argparse
+import enum
 import logging
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Optional
 
 import jax
@@ -51,6 +51,7 @@ def get_jax_devices():
 
 
 JAX_DEVICES = get_jax_devices()
+JaxDevicesEnum = enum.Enum("JaxDevicesEnum", JAX_DEVICES)
 
 
 def get_jax_dtypes():
@@ -64,6 +65,7 @@ def get_jax_dtypes():
 
 
 JAX_DTYPES = get_jax_dtypes()
+JaxDtypesEnum = enum.Enum("JaxDtypesEnum", JAX_DTYPES)
 
 
 def assert_shapes_equal(pytree, other_pytree):
@@ -114,22 +116,3 @@ class Config:
     def __str__(self):
         data = {str(self.__class__.__name__): asdict(self)}
         return tomli_w.dumps(data, indent=TAB_WIDTH)
-
-    @classmethod
-    def from_argparse(cls, parser=None):
-        """Create from argparse"""
-        if parser is None:
-            parser = argparse.ArgumentParser(
-                formatter_class=argparse.ArgumentDefaultsHelpFormatter
-            )
-
-        for field in fields(cls):
-            parser.add_argument(
-                f"--{field.name}",
-                dest=field.name,
-                type=field.type,
-                default=field.default,
-                help=field.metadata.get("help", ""),
-                choices=field.metadata.get("choices"),
-            )
-        return cls(**vars(parser.parse_args()))
