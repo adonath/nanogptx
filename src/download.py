@@ -23,7 +23,13 @@ DATA_URLS = {
 
 
 def download_weights(key: PretrainedModels):
-    """Download GPT2 weights from Huggingface"""
+    """Download GPT2 weights from Huggingface
+
+    Parameters
+    ----------
+    key : str
+        Model identifier
+    """
     key = PretrainedModels(key)
     url = MODEL_URLS[key]
 
