@@ -29,6 +29,7 @@ jax = ">=0.6.0,<0.7"
 XLA_PYTHON_CLIENT_PREALLOCATE="false"
 JAX_TRACEBACK_FILTERING="off"
 JAX_DEFAULT_MATMUL_PRECISION="float32"
+JAX_COMPILATION_CACHE_DIR=".jax_cache"
 
 [feature.gpu.target.linux-64.pypi-dependencies]
 jax = { version = "*", extras = ["cuda12"] }
