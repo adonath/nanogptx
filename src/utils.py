@@ -89,7 +89,7 @@ def join_path(path):
     return ".".join(values)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Config:
     """Configuration class"""
 

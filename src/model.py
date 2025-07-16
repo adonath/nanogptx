@@ -15,7 +15,6 @@ from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
 from utils import (
-    Config,
     JaxDevicesEnum,
     JaxDtypesEnum,
     join_path,
@@ -54,7 +53,7 @@ class EmbeddingAxis(int, Enum):
 
 
 @dataclass(kw_only=True)
-class GPTConfig(Config):
+class GPTConfig:
     """GPT configuration"""
 
     block_size: int = 1024
