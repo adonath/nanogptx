@@ -1,8 +1,8 @@
-import argparse
 import logging
 from pathlib import Path
 
 import requests
+import tyro
 from model import PretrainedModels
 
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +22,7 @@ DATA_URLS = {
 }
 
 
-def download_weights(key):
+def download_weights(key: PretrainedModels):
     """Download GPT2 weights from Huggingface"""
     key = PretrainedModels(key)
     url = MODEL_URLS[key]
@@ -45,14 +45,4 @@ def download_weights(key):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=download_weights.__doc__)
-
-    choices = [model.value for model in PretrainedModels]
-
-    parser.add_argument("key", choices=choices + ["all"], help="Model identifier")
-    args = parser.parse_args()
-
-    keys = choices if args.key == "all" else [args.key]
-
-    for key in keys:
-        download_weights(key)
+    path = tyro.cli(download_weights)
