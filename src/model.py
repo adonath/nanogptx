@@ -12,8 +12,8 @@ from typing import ClassVar, Optional
 import jax
 from jax import numpy as jnp
 from jax import tree_util
-from safetensors.flax import load_file, save_file
-
+from safetensors import safe_open
+from safetensors.flax import save_file
 from utils import Config, join_path, register_dataclass_jax
 
 log = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ PATH = Path(__file__).parent
 class PretrainedModels(str, Enum):
     """Pretrained models"""
 
+    resume = "resume"
     gpt2 = "gpt2"
     gpt2_medium = "gpt2-medium"
     gpt2_large = "gpt2-large"
@@ -83,7 +84,7 @@ class GPTConfig(Config):
 
     @classmethod
     def dummy(cls, n_layer: int = 12, n_head: int = 12):
-        """Dummy configuration to create a model without parameters but with equivalent PyTree structure"""
+        """Dummy configuration to create a model with minimal parameters but with equivalent PyTree structure"""
         return cls(
             block_size=0,
             vocab_size=0,
@@ -379,8 +380,7 @@ class GPT:
     lm_head: Linear
 
     def __post_init__(self):
-        # Tie weights
-        self.lm_head.weight.at[:].set(self.wte.weight)
+        self.lm_head.weight = self.lm_head.weight.at[:].set(self.wte.weight)
 
     @partial(jax.jit, static_argnames=("is_training",))
     def __call__(self, idx, rng_key, is_training):
@@ -448,20 +448,20 @@ class GPT:
         return n_parameters
 
     @classmethod
-    def from_pretrained(cls, model_type) -> GPT:
+    def from_pretrained(cls, model_type, device=None) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
-        path = PATH / f"data/{model_type.value}/model.safetensors"
+        path = PATH / f"data/models/{model_type.value}/model.safetensors"
 
         if not path.exists():
             raise FileNotFoundError(
                 f"Model {model_type.value} not available. Download weights using 'download.py' first."
             )
 
-        return cls.read(path)
+        return cls.read(path, device=device)
 
     @classmethod
-    def read(cls, path, transpose_weights=True) -> GPT:
+    def read(cls, path, transpose_weights=True, device=None) -> GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
         # not nice, but jax does allow generate a PyTree from static definitions
@@ -472,7 +472,11 @@ class GPT:
         data_model = {join_path(path): value for path, value in paths}
 
         log.info(f"Reading model from {path}")
-        data = load_file(path)
+
+        data = {}
+        with safe_open(path, framework="flax", device=device) as f:
+            for k in f.keys():
+                data[k] = f.get_tensor(k)
 
         # tied parameters are missing, just creat a reference as placeholder
         data["lm_head.weight"] = data["wte.weight"]

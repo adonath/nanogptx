@@ -1,7 +1,7 @@
 import jax
 from jax import numpy as jnp
 
-from model import Embedding
+from model import GPT, Embedding, GPTConfig
 
 
 def test_embedding():
@@ -14,3 +14,10 @@ def test_embedding():
     y = embed(idxs)
 
     assert y.shape == (5, 3)
+
+
+def test_gpt_from_config():
+    config = GPTConfig()
+    model = GPT.from_config(config)
+    # See
+    assert model.n_parameters() == 124439808
