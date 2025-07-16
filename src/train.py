@@ -88,26 +88,17 @@ class DatasetLoader:
         return cls(data=data, **kwargs)
 
     def __iter__(self):
-        ix = np.random.randint(
-            len(self.data) - self.block_size, size=(self.batch_size,)
-        )
+        max_val = len(self.data) - self.block_size
+        ix = np.random.randint(max_val, size=(self.batch_size,))
+
+        spec = {"device": self.device, "dtype": self.dtype}
+
         x = jnp.stack(
-            [
-                jnp.asarray(
-                    self.data[i : i + self.block_size],
-                    dtype=self.dtype,
-                    device=self.device,
-                )
-                for i in ix
-            ]
+            [jnp.asarray(self.data[i : i + self.block_size], **spec) for i in ix]
         )
         y = jnp.stack(
             [
-                jnp.asarray(
-                    self.data[i + 1 : i + 1 + self.block_size],
-                    dtype=self.dtype,
-                    device=self.device,
-                )
+                jnp.asarray(self.data[i + 1 : i + 1 + self.block_size], **spec)
                 for i in ix
             ]
         )
