@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import tiktoken
 import tyro
 from model import GPT, PretrainedModels
-from utils import JAX_DEVICES, JAX_DTYPES, Config, JaxDevicesEnum, JaxDtypesEnum
+from utils import JAX_DEVICES, Config, JaxDevicesEnum, JaxDtypesEnum
 
 PREFIX = "FILE:"
 
@@ -23,7 +23,7 @@ class SampleConfig(Config):
     top_k: int = 200  # Retain only the top_k most likely tokens, clamp others to have 0 probability
     seed: int = 1337  # Random seed
     device: JaxDevicesEnum = list(JaxDevicesEnum)[0]  # Device to use
-    dtype: JaxDtypesEnum = list(JAX_DTYPES)[0]  # Data type
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32  # Data type
 
     @property
     def prompt(self):
