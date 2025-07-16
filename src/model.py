@@ -14,11 +14,18 @@ from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
-from utils import Config, join_path, register_dataclass_jax
+from utils import (
+    Config,
+    JaxDevicesEnum,
+    JaxDtypesEnum,
+    join_path,
+    register_dataclass_jax,
+)
 
 log = logging.getLogger(__name__)
 
 PATH = Path(__file__).parent
+DEFAULT_DTYPE = jnp.float32
 
 
 class PretrainedModels(str, Enum):
@@ -55,10 +62,11 @@ class GPTConfig(Config):
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
-    dropout_rate: float = 0.0
-    use_bias: bool = True
-    seed: int = 0
-    device: str = "cpu"
+    dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
+    use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
+    seed: int = 9283  # Random seed
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     _key = None
 
     @property
@@ -71,7 +79,8 @@ class GPTConfig(Config):
         """Embedding size for the stacked qkv attention"""
         return 3 * self.n_embd
 
-    def generate_rng_key(self) -> jax.Array:
+    @property
+    def rng_key(self) -> jax.Array:
         """Generate random key for initialization"""
         if self._key is None:
             self._key = jax.random.PRNGKey(self.seed)
@@ -112,9 +121,19 @@ class Embedding:
         return self.weight.shape[EmbeddingAxis.embd]
 
     @classmethod
-    def from_n_features(cls, vocab_size: int, n_embd: int, rng_key: jax.Array):
+    def from_n_features(
+        cls,
+        vocab_size: int,
+        n_embd: int,
+        rng_key: jax.Array,
+        device=None,
+        dtype=DEFAULT_DTYPE,
+    ):
         """Create an embedding layer from number of features"""
-        return cls(weight=jax.random.normal(rng_key, (vocab_size, n_embd)))
+        weight = jax.random.normal(
+            rng_key, (vocab_size, n_embd), out_sharding=device, dtype=dtype
+        )
+        return cls(weight=weight)
 
     @classmethod
     def from_config(cls, config):
@@ -122,7 +141,7 @@ class Embedding:
         return cls.from_n_features(
             vocab_size=config.vocab_size,
             n_embd=config.n_embd,
-            rng_key=config.generate_rng_key(),
+            rng_key=config.rng_key,
         )
 
     def __call__(self, x):
@@ -139,16 +158,23 @@ class LayerNorm:
     eps: ClassVar[float] = 1e-5
 
     @classmethod
-    def from_n_dim(cls, n_dim: int, use_bias: bool = True):
+    def from_n_dim(
+        cls, n_dim: int, use_bias: bool = True, device=None, dtype=DEFAULT_DTYPE
+    ):
         """Create a layer normalization layer from number of features"""
-        weight = jnp.ones((n_dim,))
-        bias = jnp.zeros((n_dim,)) if use_bias else None
+        weight = jnp.ones((n_dim,), device=device, dtype=dtype)
+        bias = jnp.zeros((n_dim,), device=device, dtype=dtype) if use_bias else None
         return cls(weight=weight, bias=bias)
 
     @classmethod
     def from_config(cls, config: GPTConfig) -> LayerNorm:
         """Create a layer normalization layer from configuration"""
-        return cls.from_n_dim(config.n_embd, use_bias=config.use_bias)
+        return cls.from_n_dim(
+            config.n_embd,
+            use_bias=config.use_bias,
+            device=config.device,
+            dtype=config.dtype,
+        )
 
     def __call__(self, x):
         mean = jnp.mean(x, axis=Axis.feature, keepdims=True)
@@ -215,21 +241,31 @@ class Linear:
 
     @classmethod
     def from_n_features(
-        cls, n_in: int, n_out: int, rng_key: jax.Array, use_bias: bool = True
+        cls,
+        n_in: int,
+        n_out: int,
+        rng_key: jax.Array,
+        use_bias: bool = True,
+        device=None,
+        dtype=DEFAULT_DTYPE,
     ):
         """Create a linear layer from number of features"""
-        weight = jax.random.normal(rng_key, (n_out, n_in))
-        bias = jnp.zeros(n_out) if use_bias else None
+        weight = jax.random.normal(
+            rng_key, (n_out, n_in), out_sharding=device, dtype=dtype
+        )
+        bias = jnp.zeros(n_out, device=device, dtype=dtype) if use_bias else None
         return cls(weight=weight, bias=bias)
 
     @classmethod
     def from_config(cls, config):
         """Create a linear layer from configuration"""
         return cls.from_n_features(
-            config.n_embd,
-            config.n_embd_mlp,
-            rng_key=config.generate_rng_key(),
+            n_in=config.n_embd,
+            n_out=config.n_embd_mlp,
+            rng_key=config.rng_key,
             use_bias=config.use_bias,
+            device=config.device,
+            dtype=config.dtype,
         )
 
     def __call__(self, x):
@@ -258,13 +294,17 @@ class MLP:
             config.n_embd,
             config.n_embd_mlp,
             use_bias=config.use_bias,
-            rng_key=config.generate_rng_key(),
+            rng_key=config.rng_key,
+            device=config.device,
+            dtype=config.dtype,
         )
         c_proj = Linear.from_n_features(
             config.n_embd_mlp,
             config.n_embd,
             use_bias=config.use_bias,
-            rng_key=config.generate_rng_key(),
+            rng_key=config.rng_key,
+            device=config.device,
+            dtype=config.dtype,
         )
         return cls(
             c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
@@ -301,14 +341,18 @@ class CausalSelfAttention:
             c_attn=Linear.from_n_features(
                 config.n_embd,
                 config.n_embd_attn,
-                rng_key=config.generate_rng_key(),
+                rng_key=config.rng_key,
                 use_bias=config.use_bias,
+                device=config.device,
+                dtype=config.dtype,
             ),
             c_proj=Linear.from_n_features(
                 config.n_embd,
                 config.n_embd,
-                rng_key=config.generate_rng_key(),
+                rng_key=config.rng_key,
                 use_bias=config.use_bias,
+                device=config.device,
+                dtype=config.dtype,
             ),
             n_head=config.n_head,
             attn_dropout=Dropout(config.dropout_rate),
@@ -423,7 +467,11 @@ class GPT:
         return cls(
             wte=Embedding.from_config(config),
             wpe=Embedding.from_n_features(
-                config.block_size, config.n_embd, rng_key=config.generate_rng_key()
+                config.block_size,
+                config.n_embd,
+                rng_key=config.rng_key,
+                device=config.device,
+                dtype=config.dtype,
             ),
             drop=Dropout.from_config(config),
             h=[Block.from_config(config) for _ in range(config.n_layer)],
@@ -431,8 +479,10 @@ class GPT:
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
-                rng_key=config.generate_rng_key(),
+                rng_key=config.rng_key,
                 use_bias=False,
+                device=config.device,
+                dtype=config.dtype,
             ),
         )
 
