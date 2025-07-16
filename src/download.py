@@ -1,7 +1,7 @@
+import argparse
 import logging
 from pathlib import Path
 
-import click
 import requests
 from model import PretrainedModels
 
@@ -17,28 +17,14 @@ MODEL_URLS = {
     PretrainedModels.gpt2: "https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors",
 }
 
-
 DATA_URLS = {
     "shakespeare": "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",
 }
 
 
-@click.command()
-@click.option(
-    "--model",
-    default="gpt2",
-    type=click.Choice(MODEL_URLS),
-    help="Which model weights to download",
-)
-@click.option(
-    "--data",
-    default="gpt2",
-    type=click.Choice(MODEL_URLS),
-    help="Which model weights to download",
-)
-def download_weights(model):
+def download_weights(key):
     """Download GPT2 weights from Huggingface"""
-    key = PretrainedModels(model)
+    key = PretrainedModels(key)
     url = MODEL_URLS[key]
 
     path = DATA_PATH / "models" / key.value / Path(url).name
@@ -59,4 +45,14 @@ def download_weights(model):
 
 
 if __name__ == "__main__":
-    download_weights()
+    parser = argparse.ArgumentParser(description=download_weights.__doc__)
+
+    choices = [model.value for model in PretrainedModels]
+
+    parser.add_argument("key", choices=choices + ["all"], help="Model identifier")
+    args = parser.parse_args()
+
+    keys = choices if args.key == "all" else [args.key]
+
+    for key in keys:
+        download_weights(key)
