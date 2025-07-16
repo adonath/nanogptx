@@ -474,9 +474,9 @@ class GPT:
         log.info(f"Reading model from {path}")
 
         data = {}
-        with safe_open(path, framework="flax", device=str(device)) as f:
+        with safe_open(path, framework="numpy") as f:
             for k in f.keys():
-                data[k] = f.get_tensor(k)
+                data[k] = jax.device_put(f.get_tensor(k), device=device)
 
         # tied parameters are missing, just creat a reference as placeholder
         data["lm_head.weight"] = data["wte.weight"]
