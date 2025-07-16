@@ -3,7 +3,6 @@ from pathlib import Path
 
 import click
 import requests
-
 from model import PretrainedModels
 
 logging.basicConfig(level=logging.INFO)

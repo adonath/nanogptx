@@ -46,7 +46,7 @@ class EmbeddingAxis(int, Enum):
     embd = 1
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GPTConfig(Config):
     """GPT configuration"""
 

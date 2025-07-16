@@ -1,16 +1,15 @@
 from dataclasses import dataclass, field
 
 import jax
+import jax.numpy as jnp
 import tiktoken
-from jax import numpy as jnp
-
 from model import GPT, PretrainedModels
 from utils import JAX_DEVICES, JAX_DTYPES, Config
 
 PREFIX = "FILE:"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SampleConfig(Config):
     """Evaluation configuration"""
 
