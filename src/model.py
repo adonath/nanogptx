@@ -474,7 +474,7 @@ class GPT:
         log.info(f"Reading model from {path}")
 
         data = {}
-        with safe_open(path, framework="flax", device=device) as f:
+        with safe_open(path, framework="flax", device=str(device)) as f:
             for k in f.keys():
                 data[k] = f.get_tensor(k)
 

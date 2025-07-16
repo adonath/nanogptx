@@ -78,7 +78,7 @@ def sample(config):
 
     device = JAX_DEVICES[config.device]
 
-    x = jnp.array(encode(config.prompt), dtype=jnp.int64, device=device)[None, ...]
+    x = jnp.array(encode(config.prompt), device=device)[None, ...]
 
     model = GPT.from_pretrained(config.init_from, device=device)
 
