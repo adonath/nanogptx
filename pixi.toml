@@ -25,6 +25,11 @@ cuda = "12"
 [feature.cpu.dependencies]
 jax = ">=0.6.0,<0.7"
 
+[feature.gpu.activation.env]
+XLA_PYTHON_CLIENT_PREALLOCATE="false"
+JAX_TRACEBACK_FILTERING="off"
+JAX_DEFAULT_MATMUL_PRECISION="float32"
+
 [feature.gpu.target.linux-64.pypi-dependencies]
 jax = { version = "*", extras = ["cuda12"] }
 
