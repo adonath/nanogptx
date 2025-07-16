@@ -55,7 +55,12 @@ JAX_DEVICES = get_jax_devices()
 
 def get_jax_dtypes():
     """Get available dtypes"""
-    return {"float32": jnp.float32}
+    dtypes = {"float32": jnp.float32, "bfloat16": jnp.bfloat16}
+
+    if jax.config.values.get("jax_enable_x64", False):
+        dtypes["float64"] = jnp.float64
+
+    return dtypes
 
 
 JAX_DTYPES = get_jax_dtypes()
