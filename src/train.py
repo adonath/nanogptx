@@ -111,6 +111,7 @@ class GPTTrainer:
 
     optimizer: optax.GradientTransformation = field(default=optax.adamw)
     n_epochs: int = 1_000
+    seed: int = 71363
 
     @classmethod
     def from_config(cls, config):
@@ -164,7 +165,8 @@ class GPTTrainer:
         # Initialize optimizer state
         opt_state = self.optimizer.init(model)
 
-        rng = jax.random.PRNGKey(0)
+        rng = jax.random.key(self.seed)
+
         for epoch in range(self.n_epochs):
             for batch in data_loader_train:  # x should be an iterable of batches
                 rng, subkey = jax.random.split(rng)

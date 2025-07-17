@@ -1,4 +1,5 @@
 import logging
+from enum import StrEnum
 from pathlib import Path
 
 import requests
@@ -10,6 +11,14 @@ log = logging.getLogger(__name__)
 
 DATA_PATH = Path(__file__).parent / "data"
 
+
+class DatasetEnum(StrEnum):
+    """Dataset enum"""
+
+    shakespeare = "shakespeare"
+    openwebtext = "openwebtext"
+
+
 MODEL_URLS = {
     PretrainedModels.gpt2_medium: "https://huggingface.co/openai-community/gpt2-medium/resolve/main/model.safetensors",
     PretrainedModels.gpt2_large: "https://huggingface.co/openai-community/gpt2-large/resolve/main/model.safetensors",
@@ -18,11 +27,13 @@ MODEL_URLS = {
 }
 
 DATA_URLS = {
-    "shakespeare": "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",
+    DatasetEnum.shakespeare: "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",
 }
 
 
-def download_weights(key: PretrainedModels):
+def download_weights(
+    model: PretrainedModels | None = None, dataset: DatasetEnum | None = None
+):
     """Download GPT2 weights from Huggingface
 
     Parameters
@@ -30,10 +41,16 @@ def download_weights(key: PretrainedModels):
     key : str
         Model identifier
     """
-    key = PretrainedModels(key)
-    url = MODEL_URLS[key]
+    if model is not None:
+        model = PretrainedModels(model)
+        url = MODEL_URLS[model]
+        path = DATA_PATH / "models" / model.value / Path(url).name
 
-    path = DATA_PATH / "models" / key.value / Path(url).name
+    if dataset is not None:
+        dataset = DatasetEnum(dataset)
+        url = MODEL_URLS[dataset]
+        path = DATA_PATH / "train" / dataset.value / Path(url).name
+
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
