@@ -27,17 +27,12 @@ MODEL_URLS = {
     PretrainedModels.gpt2: "https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors",
 }
 
+# fmt: off
 DATA_URLS = {
-    DatasetEnum.shakespeare: [
-        "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",
-    ],
-    DatasetEnum.openwebtext: [
-        "https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{:02d}.tar".format(
-            i
-        )
-        for i in range(21)
-    ],
+    DatasetEnum.shakespeare: ["https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",],
+    DatasetEnum.openwebtext: ["https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{:02d}.tar".format(i) for i in range(21)]
 }
+# fmt: on
 
 
 def download_file(url, path):
