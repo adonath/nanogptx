@@ -1,5 +1,5 @@
 import logging
-from enum import StrEnum
+from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
@@ -7,17 +7,14 @@ import requests
 import tyro
 from model import PretrainedModels
 
+from data import DatasetEnum
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 DATA_PATH = Path(__file__).parent.parent / "data"
 
-
-class DatasetEnum(StrEnum):
-    """Dataset enum"""
-
-    shakespeare = "shakespeare"
-    openwebtext = "openwebtext"
+N_THREADS_DEAFULT = cpu_count() // 2
 
 
 MODEL_URLS = {
@@ -56,7 +53,7 @@ def download_file(url, path):
 def download(
     model: PretrainedModels | None = None,
     dataset: DatasetEnum | None = None,
-    n_threads: int = 4,
+    n_threads: int = N_THREADS_DEAFULT,
 ):
     """Download GPT2 weights from Huggingface
 
