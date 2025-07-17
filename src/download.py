@@ -9,7 +9,7 @@ from model import PretrainedModels
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-DATA_PATH = Path(__file__).parent / "data"
+DATA_PATH = Path(__file__).parent.parent / "data"
 
 
 class DatasetEnum(StrEnum):
@@ -48,8 +48,8 @@ def download_weights(
 
     if dataset is not None:
         dataset = DatasetEnum(dataset)
-        url = MODEL_URLS[dataset]
-        path = DATA_PATH / "train" / dataset.value / Path(url).name
+        url = DATA_URLS[dataset]
+        path = DATA_PATH / "download" / dataset.value / Path(url).name
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
