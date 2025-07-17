@@ -30,7 +30,7 @@ MODEL_URLS = {
 # fmt: off
 DATA_URLS = {
     DatasetEnum.shakespeare: ["https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",],
-    DatasetEnum.openwebtext: ["https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{:02d}.tar".format(i) for i in range(21)]
+    DatasetEnum.openwebtext: [f"https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{idx:02d}.tar" for idx in range(21)]
 }
 # fmt: on
 
