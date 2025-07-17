@@ -1,5 +1,6 @@
 import logging
 from enum import StrEnum
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
 import requests
@@ -27,30 +28,20 @@ MODEL_URLS = {
 }
 
 DATA_URLS = {
-    DatasetEnum.shakespeare: "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",
+    DatasetEnum.shakespeare: [
+        "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",
+    ],
+    DatasetEnum.openwebtext: [
+        "https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{:02d}.tar".format(
+            i
+        )
+        for i in range(21)
+    ],
 }
 
 
-def download_weights(
-    model: PretrainedModels | None = None, dataset: DatasetEnum | None = None
-):
-    """Download GPT2 weights from Huggingface
-
-    Parameters
-    ----------
-    key : str
-        Model identifier
-    """
-    if model is not None:
-        model = PretrainedModels(model)
-        url = MODEL_URLS[model]
-        path = DATA_PATH / "models" / model.value / Path(url).name
-
-    if dataset is not None:
-        dataset = DatasetEnum(dataset)
-        url = DATA_URLS[dataset]
-        path = DATA_PATH / "download" / dataset.value / Path(url).name
-
+def download_file(url, path):
+    """Download file"""
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if path.exists():
@@ -67,5 +58,38 @@ def download_weights(
     return path
 
 
+def download(
+    model: PretrainedModels | None = None,
+    dataset: DatasetEnum | None = None,
+    n_threads: int = 4,
+):
+    """Download GPT2 weights from Huggingface
+
+    Parameters
+    ----------
+    key : str
+        Model identifier
+    """
+    args = []
+
+    if model is not None:
+        model = PretrainedModels(model)
+        url = MODEL_URLS[model]
+        path = DATA_PATH / "models" / model.value / Path(url).name
+        args.append((url, path))
+
+    if dataset is not None:
+        dataset = DatasetEnum(dataset)
+        urls = DATA_URLS[dataset]
+        paths = [
+            DATA_PATH / "download" / dataset.value / Path(url).name for url in urls
+        ]
+        args.extend(zip(urls, paths))
+
+    with ThreadPool(n_threads) as pool:
+        result = pool.starmap_async(download_file, args)
+        result.wait()
+
+
 if __name__ == "__main__":
-    path = tyro.cli(download_weights)
+    path = tyro.cli(download)
