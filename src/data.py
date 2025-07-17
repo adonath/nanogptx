@@ -1,21 +1,22 @@
 import logging
+import lzma
 import re
-import tarfile
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import reduce
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
 import numpy as np
 import tiktoken
-import tqdm
 import tyro
 from jax import numpy as jnp
 from safetensors.numpy import save_file
+from tqdm import tqdm
 
 log = logging.getLogger(__file__)
 
-PATH = Path(__file__).parent
+PATH_DATA = Path(__file__).parent.parent / "data"
 
 
 class EncodingEnum:
@@ -45,7 +46,7 @@ class DatasetEnum(StrEnum):
 class DataPreparationConfig:
     """Data preparation config"""
 
-    shard_size: int = 1e8  # Size of each data shard in the output files, in tokens
+    shard_size: int = int(1e8)  # Size of each data shard in the output files, in tokens
     encoding: EncodingEnum = EncodingEnum.gpt2
     dataset: DatasetEnum = DatasetEnum.shakespeare
     n_process: int = max(1, cpu_count() - 2)
@@ -55,7 +56,7 @@ class DataPreparationConfig:
 
 def prepocess(sequence):
     """Preprocess sequence"""
-    return re.sub("\n\n\n+", "\n\n", sequence.decode("utf-8")).strip()
+    return re.sub("\n\n\n+", "\n\n", sequence).strip()
 
 
 def tokenize(sequence, encoding=EncodingEnum.gpt2):
@@ -78,22 +79,19 @@ def read_txt(filename):
     return data
 
 
-def read_tar(filename, member):
-    """Read tar file"""
-    with tarfile.open(filename, "r") as tar:
-        for member in tar:
-            yield tar.extractfile(member.name).read()
+def read_xz(filename):
+    """Read compressed xz file"""
+    log.info(f"Reading {filename}")
+
+    with lzma.open(filename, mode="r", encoding="utf-8") as f:
+        data = f.read()
+
+    return data
 
 
 def read_parquet():
-    """Read a parquet file"""
+    """Read a parquet file for fineweb"""
     ...
-
-
-def split(tokens, fraction=0.9):
-    """Split tokens into train and test"""
-    length = len(tokens)
-    return [tokens[fraction * length :], tokens[: fraction * length]]
 
 
 def write_safetensors(tokens, filename):
@@ -102,9 +100,19 @@ def write_safetensors(tokens, filename):
     save_file({"tokens": tokens}, filename)
 
 
+def reduce_shakespeare(filename):
+    """Reduce shakespeare"""
+    return reduce(lambda x, f: f(x), [read_txt, prepocess, tokenize], filename)
+
+
+def reduce_openwebtext(filename):
+    """Reduce openwebtext"""
+    return reduce(lambda x, f: f(x), [read_xz, prepocess, tokenize], filename)
+
+
 PIPELINES = {
-    DatasetEnum.shakespeare: [read_txt, prepocess, tokenize, split],
-    DatasetEnum.openwebtext: [read_tar, prepocess, tokenize],
+    DatasetEnum.shakespeare: reduce_shakespeare,
+    DatasetEnum.openwebtext: reduce_openwebtext,
 }
 
 
@@ -112,7 +120,7 @@ def prepare(config):
     """Prepare and tokenize data"""
     pipeline = PIPELINES[config.dataset]
 
-    filenames = (PATH / f"data/download/{config.dataset}").glob("*")
+    filenames = (PATH_DATA / f"download/{config.dataset}").glob("*.*")
 
     with tqdm(
         total=config.shard_size,
@@ -121,7 +129,7 @@ def prepare(config):
     ) as pbar:
         with Pool(config.n_process) as pool:
             n_shard, n_tokens_total = 0, 0
-            tokens_shard = np.empty((config.n_shards,), dtype=DTYPES[config.encoding])
+            tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
 
             for tokens in pool.imap(pipeline, filenames, chunksize=config.chunksize):
                 pbar.set_description(f"Shard {n_shard}")
@@ -136,13 +144,18 @@ def prepare(config):
                 tokens_shard[n_tokens_total:] = tokens[:remainder]
                 pbar.update(remainder)
 
-                path = PATH / "data" / "train" / config.dataset
-                filename = path / f"{config.dataset}_{split}_{n_shard:06d}.safetensors"
+                path = PATH_DATA / "train" / config.dataset
+                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
                 write_safetensors(tokens_shard, filename=filename)
 
                 n_shard += 1
                 n_tokens_total = len(tokens) - remainder
                 tokens_shard[:n_tokens_total] = tokens[remainder:]
+
+            if n_tokens_total > 0:
+                path = PATH_DATA / "train" / config.dataset
+                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
+                write_safetensors(tokens_shard, filename=filename)
 
 
 if __name__ == "__main__":
