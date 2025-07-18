@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
@@ -25,6 +26,7 @@ log = logging.getLogger(__name__)
 
 PATH = Path(__file__).parent
 DEFAULT_DTYPE = jnp.float32
+INIT_STD = 0.02
 
 
 class PretrainedModels(str, Enum):
@@ -66,6 +68,7 @@ class GPTConfig:
     seed: int = 9283  # Random seed
     device: JaxDevicesEnum = list(JaxDevicesEnum)[0].value
     dtype: JaxDtypesEnum = JaxDtypesEnum.float32.value
+    init_std: float = INIT_STD
     _key = None
 
     @property
@@ -127,9 +130,12 @@ class Embedding:
         rng_key: jax.Array,
         device=None,
         dtype=DEFAULT_DTYPE,
+        init_std=INIT_STD,
     ):
         """Create an embedding layer from number of features"""
-        weight = jax.random.normal(rng_key, (vocab_size, n_embd), dtype=dtype)
+        weight = init_std * jax.random.normal(
+            rng_key, (vocab_size, n_embd), dtype=dtype
+        )
         return cls(weight=jax.device_put(weight, device))
 
     @classmethod
@@ -139,6 +145,7 @@ class Embedding:
             vocab_size=config.vocab_size,
             n_embd=config.n_embd,
             rng_key=config.rng_key,
+            init_std=config.init_std,
         )
 
     def __call__(self, x):
@@ -245,9 +252,10 @@ class Linear:
         use_bias: bool = True,
         device=None,
         dtype=DEFAULT_DTYPE,
+        init_std=INIT_STD,
     ):
         """Create a linear layer from number of features"""
-        weight = jax.random.normal(rng_key, (n_out, n_in), dtype=dtype)
+        weight = init_std * jax.random.normal(rng_key, (n_out, n_in), dtype=dtype)
         bias = jnp.zeros(n_out, device=device, dtype=dtype) if use_bias else None
         return cls(weight=jax.device_put(weight, device), bias=bias)
 
@@ -261,6 +269,7 @@ class Linear:
             use_bias=config.use_bias,
             device=config.device,
             dtype=config.dtype,
+            init_std=config.init_std,
         )
 
     def __call__(self, x):
@@ -300,6 +309,7 @@ class MLP:
             rng_key=config.rng_key,
             device=config.device,
             dtype=config.dtype,
+            init_std=config.init_std / math.sqrt(2 * config.n_layer),
         )
         return cls(
             c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
