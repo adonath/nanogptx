@@ -1,3 +1,4 @@
+import json
 import logging
 import lzma
 import re
@@ -11,7 +12,7 @@ import numpy as np
 import tiktoken
 import tyro
 from jax import numpy as jnp
-from safetensors.numpy import save_file
+from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
 
 log = logging.getLogger(__file__)
@@ -52,6 +53,7 @@ class DataPreparationConfig:
     n_process: int = max(1, cpu_count() - 2)
     chunksize: int = 16
     show_progress: bool = True
+    write_stats: bool = True  # write summary statistics json file
 
 
 def prepocess(sequence):
@@ -94,14 +96,13 @@ def read_parquet():
     ...
 
 
-def write_safetensors(tokens, filename, n_vocab):
+def write_safetensors(tokens, filename, encoding):
     """Write safetensors file"""
     log.info(f"Writing {filename}")
 
-    metadata = {
-        "n-tokens": str(len(tokens)),
-    }
+    metadata = {"n-tokens": str(len(tokens)), "encoding": encoding}
 
+    n_vocab = tiktoken.get_encoding(config.encoding).n_vocab
     data = {
         "tokens": tokens,
         "stats": np.bincount(tokens, minlength=n_vocab),
@@ -115,6 +116,32 @@ def apply(pipeline, filename):
     return reduce(lambda x, f: f(x), pipeline, filename)
 
 
+def write_stats(path):
+    """Write summary stats file"""
+    filenames = Path(path).glob("*.safetensors")
+
+    for idx, filename in enumerate(filenames):
+        with safe_open(filename, framework="numpy") as f:
+            if idx == 0:
+                stats = f.get_tensor("stats")
+                n_tokens = int(f.metadata()["n-tokens"])
+                continue
+
+            n_tokens += int(f.metadata()["n-tokens"])
+            stats += f.get_tensor("stats")
+
+    data = {
+        "n-tokens": n_tokens,
+        "stats": stats.tolist(),
+    }
+
+    filename_json = path / "summary-stats.json"
+
+    with filename_json.open("w") as json_file:
+        log.info(f"Writing {filename_json}")
+        json.dump(data, json_file, indent=4)
+
+
 PIPELINES = {
     DatasetEnum.shakespeare: partial(apply, [read_txt, prepocess, tokenize]),
     DatasetEnum.openwebtext: partial(apply, [read_xz, prepocess, tokenize]),
@@ -125,7 +152,7 @@ def prepare(config):
     """Prepare and tokenize data"""
     pipeline = PIPELINES[config.dataset]
     filenames = (PATH_DATA / f"download/{config.dataset}").glob("*.*")
-    n_vocab = tiktoken.get_encoding(config.encoding).n_vocab
+    path = PATH_DATA / "train" / config.dataset
 
     with tqdm(
         total=config.shard_size,
@@ -149,22 +176,28 @@ def prepare(config):
                 tokens_shard[n_tokens_total:] = tokens[:remainder]
                 pbar.update(remainder)
 
-                path = PATH_DATA / "train" / config.dataset
                 filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(tokens_shard, filename=filename, n_vocab=n_vocab)
+                write_safetensors(
+                    tokens_shard, filename=filename, encoding=config.encoding
+                )
 
                 n_shard += 1
                 n_tokens_total = len(tokens) - remainder
                 tokens_shard[:n_tokens_total] = tokens[remainder:]
 
             if n_tokens_total > 0:
-                path = PATH_DATA / "train" / config.dataset
                 filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
                 write_safetensors(
-                    tokens_shard[:n_tokens_total], filename=filename, n_vocab=n_vocab
+                    tokens_shard[:n_tokens_total],
+                    filename=filename,
+                    encoding=config.encoding,
                 )
 
 
 if __name__ == "__main__":
     config = tyro.cli(DataPreparationConfig)
     prepare(config)
+
+    if config.write_stats:
+        path = PATH_DATA / "train" / config.dataset
+        write_stats(path=path)
