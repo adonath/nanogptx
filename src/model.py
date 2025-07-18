@@ -82,6 +82,11 @@ class GPTConfig:
         return 3 * self.n_embd
 
     @property
+    def init_std_c_proj(self):
+        """Standard deviation init for c proj layers"""
+        return self.init_std / math.sqrt(2 * self.n_layer)
+
+    @property
     def rng_key(self) -> jax.Array:
         """Generate random key for initialization"""
         if self._key is None:
@@ -309,7 +314,7 @@ class MLP:
             rng_key=config.rng_key,
             device=config.device,
             dtype=config.dtype,
-            init_std=config.init_std / math.sqrt(2 * config.n_layer),
+            init_std=config.init_std_c_proj,
         )
         return cls(
             c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
@@ -358,6 +363,7 @@ class CausalSelfAttention:
                 use_bias=config.use_bias,
                 device=config.device,
                 dtype=config.dtype,
+                init_std=config.init_std_c_proj,
             ),
             n_head=config.n_head,
             attn_dropout=Dropout(config.dropout_rate),
