@@ -237,8 +237,8 @@ if __name__ == "__main__":
     data_loader_train = DatasetLoader.read(path_json, key="shards-train")
     data_loader_validate = DatasetLoader.read(path_json, key="shards-val")
 
-    # trainer.train(
-    #     model=model,
-    #     data_loader_train=data_loader_train,
-    #     data_loader_validate=data_loader_validate,
-    # )
+    trainer.train(
+        model=model,
+        data_loader_train=data_loader_train,
+        data_loader_validate=data_loader_validate,
+    )

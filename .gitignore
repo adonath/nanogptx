@@ -3,3 +3,4 @@ data/
 __pycache__/
 .python-version# pixi environments
 .pixi
+.jax_cache
