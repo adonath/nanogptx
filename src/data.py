@@ -29,9 +29,6 @@ class EncodingEnum:
 DTYPES = {EncodingEnum.gpt2: np.uint16}
 
 
-# TODO: write acuumulated token stats as JSON
-
-
 class DatasetEnum(StrEnum):
     """Dataset enum"""
 
