@@ -1,6 +1,8 @@
 import enum
+import json
+from collections import namedtuple
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +10,7 @@ import numpy as np
 import optax
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
+from safetensors import safe_open
 from utils import Config, JaxDevicesEnum
 
 InitFrom = enum.Enum(
@@ -21,6 +24,7 @@ DATASET_PATHS = {
 }
 
 
+# fmt: off
 @dataclass(kw_only=True)
 class IOConfig:
     """Training configuration"""
@@ -35,9 +39,7 @@ class IOConfig:
     )
     init_from: InitFrom = InitFrom.scratch
     dataset: Literal["openwebtext", "shakespeare"] = "openwebtext"
-    batch_size: int = (
-        12  # if gradient_accumulation_steps > 1, this is the micro-batch size
-    )
+    batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
 
 
 @dataclass(kw_only=True)
@@ -65,44 +67,81 @@ class OptimizerConfig:
     warmup_iters: int = 2000  # how many steps to warm up for
     lr_decay_iters: int = 600000  # should be ~= max_iters per Chinchilla
     gradient_accumulation_steps: int = 5 * 8  # used to simulate larger batch sizes
-    min_lr: float = (
-        6e-5  # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
-    )
+    min_lr: float = 6e-5  # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
+# fmt: on
+
+
+Batch = namedtuple("Batch", ["x", "y"])
 
 
 @dataclass
 class DatasetLoader:
-    """Dataset loader"""
+    """Dataset loader
+
+    This dataset load supports array sharding for SPMD parallelism.
+
+
+    To be used as:
+
+    for batch in loader:
+        x, y = batch.x, batch.y
+
+
+    """
 
     batch_size: int = 12
     device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
     block_size: int = 1024
     seed: int = 78127
-    data: Any | None = None
     dtype: jnp.dtype = jnp.int64
+    filenames: list[str] = field(default=[])
 
     @classmethod
-    def read(cls, path, **kwargs):
-        """Read from path"""
-        data = np.memmap(path, dtype=np.uint16, mode="r")
-        return cls(data=data, **kwargs)
+    def read(cls, path, key="shards-train", **kwargs):
+        """Read from json summary file"""
+
+        with path.open("r") as f:
+            data = json.load(f)
+
+        filenames = [path.parent / _ for _ in data[key]]
+
+        return cls(filenames, **kwargs)
+
+    @property
+    def n_shards(self):
+        """Number of shards"""
+        return len(self.filenames)
 
     def __iter__(self):
-        max_val = len(self.data) - self.block_size
-        ix = np.random.randint(max_val, size=(self.batch_size,))
+        random_state = np.random.default_rng(self.seed)
 
-        spec = {"device": self.device, "dtype": self.dtype}
+        while True:
+            # choose random shard
+            shard_idx = random_state.randint(self.n_shards)
 
-        x = jnp.stack(
-            [jnp.asarray(self.data[i : i + self.block_size], **spec) for i in ix]
-        )
-        y = jnp.stack(
-            [
-                jnp.asarray(self.data[i + 1 : i + 1 + self.block_size], **spec)
-                for i in ix
-            ]
-        )
-        return x, y
+            # TODO: load straight to device for zero copy
+            with safe_open(
+                self.filenames[shard_idx], framework="numpy", device="cpu"
+            ) as f:
+                data = f.get_tensor("tokens")
+
+            # we aim for a statistical coverage here...
+            for idx in range(len(data) // (self.batch_size * self.block_size)):
+                max_val = len(data) - self.block_size
+                ix = random_state.randint(max_val, size=(self.batch_size,))
+
+                spec = {"device": self.device, "dtype": self.dtype}
+
+                x = jnp.stack(
+                    [jnp.asarray(data[i : i + self.block_size], **spec) for i in ix]
+                )
+                y = jnp.stack(
+                    [
+                        jnp.asarray(data[i + 1 : i + 1 + self.block_size], **spec)
+                        for i in ix
+                    ]
+                )
+                yield Batch(x=x, y=y)
 
 
 @dataclass
@@ -116,13 +155,14 @@ class GPTTrainer:
     @classmethod
     def from_config(cls, config):
         """Create from config"""
+        warmup_steps = (
+            config.warmup_iters if config.init_from == InitFrom.scratch else 0
+        )
 
         lr_scheduler = optax.warmup_cosine_decay_schedule(
             init_value=0.0,
             peak_value=config.learning_rate,
-            warmup_steps=config.warmup_iters
-            if config.init_from == InitFrom.scratch
-            else 0,
+            warmup_steps=warmup_steps,
             decay_steps=config.lr_decay_iters - config.iter_num,
             end_value=config.min_lr,
         )
@@ -140,7 +180,7 @@ class GPTTrainer:
             optax.apply_every(config.gradient_accumulation_steps),
         )
 
-        return cls(optimizer=optimizer)
+        return cls(optimizer=optimizer, seed=config.seed, n_epochs=config.n_epochs)
 
     def train(self, model, data_loader_train, data_loader_validate):
         """Train model"""
@@ -191,8 +231,12 @@ if __name__ == "__main__":
 
     trainer = GPTTrainer.from_config(config)
 
-    data_loader_train = DatasetLoader.read(DATASET_PATHS[config.dataset])
-    data_loader_validate = DatasetLoader.read(DATASET_PATHS[config.dataset])
+    data_loader_train = DatasetLoader.read(
+        DATASET_PATHS[config.dataset], key="shards-val"
+    )
+    data_loader_validate = DatasetLoader.read(
+        DATASET_PATHS[config.dataset], key="shards-val"
+    )
 
     trainer.train(
         model=model,
