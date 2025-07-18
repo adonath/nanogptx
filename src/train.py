@@ -87,7 +87,7 @@ class DatasetLoader:
     """
 
     batch_size: int = 12
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0].value
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
     block_size: int = 1024
     seed: int = 78127
     dtype: jnp.dtype = jnp.int64
@@ -127,7 +127,7 @@ class DatasetLoader:
                 max_val = len(data) - self.block_size
                 ix = random_state.integers(max_val, size=(self.batch_size,))
 
-                spec = {"device": self.device, "dtype": self.dtype}
+                spec = {"device": self.device.value, "dtype": self.dtype}
 
                 x = jnp.stack(
                     [jnp.asarray(data[i : i + self.block_size], **spec) for i in ix]
@@ -237,8 +237,8 @@ if __name__ == "__main__":
     data_loader_train = DatasetLoader.read(path_json, key="shards-train")
     data_loader_validate = DatasetLoader.read(path_json, key="shards-val")
 
-    trainer.train(
-        model=model,
-        data_loader_train=data_loader_train,
-        data_loader_validate=data_loader_validate,
-    )
+    # trainer.train(
+    #     model=model,
+    #     data_loader_train=data_loader_train,
+    #     data_loader_validate=data_loader_validate,
+    # )

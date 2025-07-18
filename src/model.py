@@ -66,10 +66,20 @@ class GPTConfig:
     dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
     use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
     seed: int = 9283  # Random seed
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0].value
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32.value
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     init_std: float = INIT_STD
     _key = None
+
+    @property
+    def device_jax(self):
+        """Return actual device"""
+        return self.device.value
+
+    @property
+    def dtype_jax(self):
+        """Return actual device"""
+        return self.dtype.value
 
     @property
     def n_embd_mlp(self) -> int:
@@ -181,8 +191,8 @@ class LayerNorm:
         return cls.from_n_dim(
             config.n_embd,
             use_bias=config.use_bias,
-            device=config.device,
-            dtype=config.dtype,
+            device=config.device_jax,
+            dtype=config.dtype_jax,
         )
 
     def __call__(self, x):
@@ -272,8 +282,8 @@ class Linear:
             n_out=config.n_embd_mlp,
             rng_key=config.rng_key,
             use_bias=config.use_bias,
-            device=config.device,
-            dtype=config.dtype,
+            device=config.device_jax,
+            dtype=config.dtype_jax,
             init_std=config.init_std,
         )
 
@@ -304,16 +314,16 @@ class MLP:
             config.n_embd_mlp,
             use_bias=config.use_bias,
             rng_key=config.rng_key,
-            device=config.device,
-            dtype=config.dtype,
+            device=config.device_jax,
+            dtype=config.dtype_jax,
         )
         c_proj = Linear.from_n_features(
             config.n_embd_mlp,
             config.n_embd,
             use_bias=config.use_bias,
             rng_key=config.rng_key,
-            device=config.device,
-            dtype=config.dtype,
+            device=config.device_jax,
+            dtype=config.dtype_jax,
             init_std=config.init_std_c_proj,
         )
         return cls(
@@ -353,16 +363,16 @@ class CausalSelfAttention:
                 config.n_embd_attn,
                 rng_key=config.rng_key,
                 use_bias=config.use_bias,
-                device=config.device,
-                dtype=config.dtype,
+                device=config.device_jax,
+                dtype=config.dtype_jax,
             ),
             c_proj=Linear.from_n_features(
                 config.n_embd,
                 config.n_embd,
                 rng_key=config.rng_key,
                 use_bias=config.use_bias,
-                device=config.device,
-                dtype=config.dtype,
+                device=config.device_jax,
+                dtype=config.dtype_jax,
                 init_std=config.init_std_c_proj,
             ),
             n_head=config.n_head,
@@ -481,8 +491,8 @@ class GPT:
                 config.block_size,
                 config.n_embd,
                 rng_key=config.rng_key,
-                device=config.device,
-                dtype=config.dtype,
+                device=config.device_jax,
+                dtype=config.dtype_jax,
             ),
             drop=Dropout.from_config(config),
             h=[Block.from_config(config) for _ in range(config.n_layer)],
@@ -492,8 +502,8 @@ class GPT:
                 config.vocab_size,
                 rng_key=config.rng_key,
                 use_bias=False,
-                device=config.device,
-                dtype=config.dtype,
+                device=config.device_jax,
+                dtype=config.dtype_jax,
             ),
         )
 
