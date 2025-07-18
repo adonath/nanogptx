@@ -47,7 +47,7 @@ class DataPreparationConfig:
     """Data preparation config"""
 
     shard_size: int = int(1e8)  # Size of each data shard in the output files, in tokens
-    shards_val: set[int] = {0}  # Which shards to use for validation
+    shards_val: tuple[int] = (0,)  # Which shards to use for validation
     encoding: EncodingEnum = EncodingEnum.gpt2
     dataset: DatasetEnum = DatasetEnum.shakespeare
     n_process: int = max(1, cpu_count() - 2)
@@ -144,17 +144,17 @@ def write_summary(path, shards_val_idxs):
     for filename in filenames:
         shard_idx = int(filename.stem.split("_")[-1])
         if shard_idx in shards_val_idxs:
-            shards_val.append(filename)
+            shards_val.append(filename.name)
             continue
 
-        shards_train.append(filename)
+        shards_train.append(filename.name)
 
     data = {
         "n-tokens": n_tokens,
         "encoding": encoding,
         "shards-train": shards_train,
         "shards-val": shards_val,
-        "stats": stats.tolist(),
+        "token-stats": stats.tolist(),
     }
 
     filename_json = path / "summary-stats.json"
