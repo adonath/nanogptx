@@ -3,7 +3,7 @@ import lzma
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from functools import reduce
+from functools import partial, reduce
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
@@ -94,33 +94,38 @@ def read_parquet():
     ...
 
 
-def write_safetensors(tokens, filename):
+def write_safetensors(tokens, filename, n_vocab):
     """Write safetensors file"""
     log.info(f"Writing {filename}")
-    save_file({"tokens": tokens}, filename)
+
+    metadata = {
+        "n-tokens": str(len(tokens)),
+    }
+
+    data = {
+        "tokens": tokens,
+        "stats": np.bincount(tokens, minlength=n_vocab),
+    }
+
+    save_file(data, filename, metadata=metadata)
 
 
-def reduce_shakespeare(filename):
-    """Reduce shakespeare"""
-    return reduce(lambda x, f: f(x), [read_txt, prepocess, tokenize], filename)
-
-
-def reduce_openwebtext(filename):
-    """Reduce openwebtext"""
-    return reduce(lambda x, f: f(x), [read_xz, prepocess, tokenize], filename)
+def apply(pipeline, filename):
+    """Apply pipeline steps in series"""
+    return reduce(lambda x, f: f(x), pipeline, filename)
 
 
 PIPELINES = {
-    DatasetEnum.shakespeare: reduce_shakespeare,
-    DatasetEnum.openwebtext: reduce_openwebtext,
+    DatasetEnum.shakespeare: partial(apply, [read_txt, prepocess, tokenize]),
+    DatasetEnum.openwebtext: partial(apply, [read_xz, prepocess, tokenize]),
 }
 
 
 def prepare(config):
     """Prepare and tokenize data"""
     pipeline = PIPELINES[config.dataset]
-
     filenames = (PATH_DATA / f"download/{config.dataset}").glob("*.*")
+    n_vocab = tiktoken.get_encoding(config.encoding).n_vocab
 
     with tqdm(
         total=config.shard_size,
@@ -146,7 +151,7 @@ def prepare(config):
 
                 path = PATH_DATA / "train" / config.dataset
                 filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(tokens_shard, filename=filename)
+                write_safetensors(tokens_shard, filename=filename, n_vocab=n_vocab)
 
                 n_shard += 1
                 n_tokens_total = len(tokens) - remainder
@@ -155,7 +160,9 @@ def prepare(config):
             if n_tokens_total > 0:
                 path = PATH_DATA / "train" / config.dataset
                 filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(tokens_shard, filename=filename)
+                write_safetensors(
+                    tokens_shard[:n_tokens_total], filename=filename, n_vocab=n_vocab
+                )
 
 
 if __name__ == "__main__":
