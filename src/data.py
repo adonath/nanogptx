@@ -2,9 +2,11 @@ import json
 import logging
 import lzma
 import re
+import tarfile
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial, reduce
+from itertools import repeat
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
@@ -45,12 +47,13 @@ class DataPreparationConfig:
     """Data preparation config"""
 
     shard_size: int = int(1e8)  # Size of each data shard in the output files, in tokens
+    shards_val: set[int] = {0}  # Which shards to use for validation
     encoding: EncodingEnum = EncodingEnum.gpt2
     dataset: DatasetEnum = DatasetEnum.shakespeare
     n_process: int = max(1, cpu_count() - 2)
     chunksize: int = 16
     show_progress: bool = True
-    write_stats: bool = True  # write summary statistics json file
+    write_summary_only: bool = False  # write summary statistics json file
 
 
 def prepocess(sequence):
@@ -78,12 +81,13 @@ def read_txt(filename):
     return data
 
 
-def read_xz(filename):
-    """Read compressed xz file"""
-    log.info(f"Reading {filename}")
+def read_xz_from_tar(tar_path, xz_filename):
+    """Read a tarfile and extract the compressed content"""
 
-    with lzma.open(filename, mode="r", encoding="utf-8") as f:
-        data = f.read()
+    with tarfile.open(tar_path, "r") as tar:
+        xz_file = tar.extractfile(xz_filename)
+        decompressed_data = lzma.decompress(xz_file.read())
+        data = decompressed_data.decode("utf-8")
 
     return data
 
@@ -110,25 +114,46 @@ def write_safetensors(tokens, filename, encoding):
 
 def apply(pipeline, filename):
     """Apply pipeline steps in series"""
-    return reduce(lambda x, f: f(x), pipeline, filename)
+
+    def unpack(f, args):
+        if isinstance(args, tuple):
+            return f(*args)
+
+        return f(args)
+
+    return reduce(lambda x, f: unpack(f, x), pipeline, filename)
 
 
-def write_stats(path):
+def write_summary(path, shards_val_idxs):
     """Write summary stats file"""
-    filenames = Path(path).glob("*.safetensors")
+    filenames = list(Path(path).glob("*.safetensors"))
 
     for idx, filename in enumerate(filenames):
         with safe_open(filename, framework="numpy") as f:
             if idx == 0:
                 stats = f.get_tensor("stats")
                 n_tokens = int(f.metadata()["n-tokens"])
+                encoding = f.metadata()["encoding"]
                 continue
 
             n_tokens += int(f.metadata()["n-tokens"])
             stats += f.get_tensor("stats")
 
+    shards_train, shards_val = [], []
+
+    for filename in filenames:
+        shard_idx = int(filename.stem.split("_")[-1])
+        if shard_idx in shards_val_idxs:
+            shards_val.append(filename)
+            continue
+
+        shards_train.append(filename)
+
     data = {
         "n-tokens": n_tokens,
+        "encoding": encoding,
+        "shards-train": shards_train,
+        "shards-val": shards_val,
         "stats": stats.tolist(),
     }
 
@@ -139,9 +164,21 @@ def write_stats(path):
         json.dump(data, json_file, indent=4)
 
 
+def expand_filenames_openwebtext(filenames):
+    """Return the expanded filenames"""
+    filenames_expanded = []
+
+    for filename in filenames:
+        with tarfile.open(filename, "r") as tar:
+            names = tar.getnames()
+            filenames_expanded.extend(zip(repeat(filename), names))
+
+    return filenames_expanded
+
+
 PIPELINES = {
     DatasetEnum.shakespeare: partial(apply, [read_txt, prepocess, tokenize]),
-    DatasetEnum.openwebtext: partial(apply, [read_xz, prepocess, tokenize]),
+    DatasetEnum.openwebtext: partial(apply, [read_xz_from_tar, prepocess, tokenize]),
 }
 
 
@@ -149,7 +186,13 @@ def prepare(config):
     """Prepare and tokenize data"""
     pipeline = PIPELINES[config.dataset]
     filenames = (PATH_DATA / f"download/{config.dataset}").glob("*.*")
+
+    if config.dataset == DatasetEnum.openwebtext:
+        filenames = expand_filenames_openwebtext(filenames)
+
+    log.info(f"Found {len(filenames)} files to process.")
     path = PATH_DATA / "train" / config.dataset
+    path.mkdir(parents=True, exist_ok=True)
 
     with tqdm(
         total=config.shard_size,
@@ -193,8 +236,9 @@ def prepare(config):
 
 if __name__ == "__main__":
     config = tyro.cli(DataPreparationConfig)
-    prepare(config)
 
-    if config.write_stats:
-        path = PATH_DATA / "train" / config.dataset
-        write_stats(path=path)
+    if not config.write_summary_only:
+        prepare(config)
+
+    path = PATH_DATA / "train" / config.dataset
+    write_summary(path=path, shards_val_idxs=config.shards_val)
