@@ -1,6 +1,7 @@
 import enum
 import logging
 from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Any, Optional
 
 import jax
@@ -12,6 +13,7 @@ from jax import tree_util
 log = logging.getLogger(__name__)
 
 TAB_WIDTH = 4
+PATH_DATA = Path(__file__).parent.parent / "data"
 
 
 class register_dataclass_jax:

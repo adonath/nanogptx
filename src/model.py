@@ -64,8 +64,8 @@ class GPTConfig:
     dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
     use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
     seed: int = 9283  # Random seed
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0].value
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32.value
     _key = None
 
     @property
@@ -129,10 +129,8 @@ class Embedding:
         dtype=DEFAULT_DTYPE,
     ):
         """Create an embedding layer from number of features"""
-        weight = jax.random.normal(
-            rng_key, (vocab_size, n_embd), out_sharding=device, dtype=dtype
-        )
-        return cls(weight=weight)
+        weight = jax.random.normal(rng_key, (vocab_size, n_embd), dtype=dtype)
+        return cls(weight=jax.device_put(weight, device))
 
     @classmethod
     def from_config(cls, config):
@@ -249,11 +247,9 @@ class Linear:
         dtype=DEFAULT_DTYPE,
     ):
         """Create a linear layer from number of features"""
-        weight = jax.random.normal(
-            rng_key, (n_out, n_in), out_sharding=device, dtype=dtype
-        )
+        weight = jax.random.normal(rng_key, (n_out, n_in), dtype=dtype)
         bias = jnp.zeros(n_out, device=device, dtype=dtype) if use_bias else None
-        return cls(weight=weight, bias=bias)
+        return cls(weight=jax.device_put(weight, device), bias=bias)
 
     @classmethod
     def from_config(cls, config):

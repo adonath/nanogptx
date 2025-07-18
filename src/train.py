@@ -1,5 +1,6 @@
 import enum
 import json
+import logging
 from collections import namedtuple
 from dataclasses import dataclass, field
 from typing import Literal
@@ -11,17 +12,13 @@ import optax
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
-from utils import Config, JaxDevicesEnum
+from utils import PATH_DATA, Config, JaxDevicesEnum
+
+log = logging.getLogger(__file__)
 
 InitFrom = enum.Enum(
     "InitFrom", {_.name: _.value for _ in PretrainedModels} | {"scratch": "scratch"}
 )
-
-
-DATASET_PATHS = {
-    "openwebtext": "",
-    "shakespeare": "",
-}
 
 
 # fmt: off
@@ -90,11 +87,11 @@ class DatasetLoader:
     """
 
     batch_size: int = 12
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0].value
     block_size: int = 1024
     seed: int = 78127
     dtype: jnp.dtype = jnp.int64
-    filenames: list[str] = field(default=[])
+    filenames: list[str] = field(default_factory=[])
 
     @classmethod
     def read(cls, path, key="shards-train", **kwargs):
@@ -105,7 +102,7 @@ class DatasetLoader:
 
         filenames = [path.parent / _ for _ in data[key]]
 
-        return cls(filenames, **kwargs)
+        return cls(filenames=filenames, **kwargs)
 
     @property
     def n_shards(self):
@@ -117,18 +114,18 @@ class DatasetLoader:
 
         while True:
             # choose random shard
-            shard_idx = random_state.randint(self.n_shards)
+            shard_idx = random_state.integers(self.n_shards)
 
             # TODO: load straight to device for zero copy
-            with safe_open(
-                self.filenames[shard_idx], framework="numpy", device="cpu"
-            ) as f:
+            filename = self.filenames[shard_idx]
+            with safe_open(filename, framework="numpy", device="cpu") as f:
+                log.info(f"Reading {filename}")
                 data = f.get_tensor("tokens")
 
             # we aim for a statistical coverage here...
             for idx in range(len(data) // (self.batch_size * self.block_size)):
                 max_val = len(data) - self.block_size
-                ix = random_state.randint(max_val, size=(self.batch_size,))
+                ix = random_state.integers(max_val, size=(self.batch_size,))
 
                 spec = {"device": self.device, "dtype": self.dtype}
 
@@ -149,7 +146,7 @@ class GPTTrainer:
     """GPT trainer"""
 
     optimizer: optax.GradientTransformation = field(default=optax.adamw)
-    n_epochs: int = 1_000
+    max_iters: int = 60_000
     seed: int = 71363
 
     @classmethod
@@ -163,7 +160,7 @@ class GPTTrainer:
             init_value=0.0,
             peak_value=config.learning_rate,
             warmup_steps=warmup_steps,
-            decay_steps=config.lr_decay_iters - config.iter_num,
+            decay_steps=config.lr_decay_iters,
             end_value=config.min_lr,
         )
 
@@ -180,17 +177,16 @@ class GPTTrainer:
             optax.apply_every(config.gradient_accumulation_steps),
         )
 
-        return cls(optimizer=optimizer, seed=config.seed, n_epochs=config.n_epochs)
+        return cls(optimizer=optimizer, seed=config.seed, max_iters=config.max_iters)
 
     def train(self, model, data_loader_train, data_loader_validate):
         """Train model"""
 
         def loss_fn(model, batch, rng_key):
             """Loss fucntion"""
-            inputs, targets = batch
-            logits = model(inputs, rng_key, is_training=True)
+            logits = model(batch.x, rng_key, is_training=True)
             loss = optax.softmax_cross_entropy_with_integer_labels(
-                logits, targets
+                logits, batch.y
             ).mean()
             return loss
 
@@ -207,14 +203,20 @@ class GPTTrainer:
 
         rng = jax.random.key(self.seed)
 
-        for epoch in range(self.n_epochs):
-            for batch in data_loader_train:  # x should be an iterable of batches
-                rng, subkey = jax.random.split(rng)
-                params, opt_state, loss = train_step(model, opt_state, batch, subkey)
-                # Optionally log loss, save checkpoints, etc.
-                print(f"Epoch {epoch}, Loss: {loss}")
+        n_iter = 0
 
-        return params
+        for batch in data_loader_train:  # x should be an iterable of batches
+            rng, subkey = jax.random.split(rng)
+            model, opt_state, loss = train_step(model, opt_state, batch, subkey)
+            # Optionally log loss, save checkpoints, etc.
+            print(f"N iter {n_iter}, Loss: {loss}")
+
+            if n_iter == self.max_iters:
+                break
+
+            n_iter += 1
+
+        return model
 
 
 @dataclass(kw_only=True)
@@ -231,12 +233,9 @@ if __name__ == "__main__":
 
     trainer = GPTTrainer.from_config(config)
 
-    data_loader_train = DatasetLoader.read(
-        DATASET_PATHS[config.dataset], key="shards-val"
-    )
-    data_loader_validate = DatasetLoader.read(
-        DATASET_PATHS[config.dataset], key="shards-val"
-    )
+    path_json = PATH_DATA / "train" / config.dataset / "summary-stats.json"
+    data_loader_train = DatasetLoader.read(path_json, key="shards-train")
+    data_loader_validate = DatasetLoader.read(path_json, key="shards-val")
 
     trainer.train(
         model=model,

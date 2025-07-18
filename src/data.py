@@ -31,6 +31,9 @@ class EncodingEnum:
 DTYPES = {EncodingEnum.gpt2: np.uint16}
 
 
+# TODO: check the new shakespeare processing here: https://github.com/karpathy/llm.c/blob/master/dev/data/tinyshakespeare.py#L61
+
+
 class DatasetEnum(StrEnum):
     """Dataset enum"""
 
