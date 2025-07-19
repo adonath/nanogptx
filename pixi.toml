@@ -13,7 +13,7 @@ JAX_COMPILATION_CACHE_DIR=".jax_cache"
 JAX_TRACEBACK_FILTERING="off"
 
 [dependencies]
-jax = ">=0.6.0,<0.7"
+jax = ">=0.5.0,<0.7"
 safetensors = ">=0.5.3,<0.6"
 python = ">=3.13.5,<3.14"
 requests = ">=2.32.4,<3"
@@ -30,7 +30,7 @@ tomli-w = ">=1.2.0, <2"
 cuda = "12"
 
 [feature.cpu.dependencies]
-jax = ">=0.6.0,<0.7"
+jax = ">=0.5.0,<0.7"
 
 [feature.gpu.activation.env]
 JAX_DEFAULT_MATMUL_PRECISION="float32"
@@ -38,6 +38,14 @@ JAX_DEFAULT_MATMUL_PRECISION="float32"
 [feature.gpu.target.linux-64.pypi-dependencies]
 jax = { version = "*", extras = ["cuda12"] }
 
+[feature.gpu-jax-metal.target.osx-arm64.dependencies]
+jax = "==0.5.0"
+
+[feature.gpu-jax-metal.target.osx-arm64.pypi-dependencies]
+jax-metal = ">=0.0.7"
+
+
 [environments]
 cpu = ["cpu"]
 gpu = ["gpu"]
+gpu-jax-metal = ["gpu-jax-metal"]
