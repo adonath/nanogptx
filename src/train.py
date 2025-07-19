@@ -232,8 +232,18 @@ if __name__ == "__main__":
     trainer = GPTTrainer.from_config(config)
 
     path_json = PATH_DATA / "train" / config.dataset / "summary-stats.json"
-    data_loader_train = DatasetLoader.read(path_json, key="shards-train")
-    data_loader_validate = DatasetLoader.read(path_json, key="shards-val")
+    data_loader_train = DatasetLoader.read(
+        path_json,
+        key="shards-train",
+        block_size=config.block_size,
+        batch_size=config.batch_size,
+    )
+    data_loader_validate = DatasetLoader.read(
+        path_json,
+        key="shards-val",
+        block_size=config.block_size,
+        batch_size=config.batch_size,
+    )
 
     model = trainer.train(
         model=model,
