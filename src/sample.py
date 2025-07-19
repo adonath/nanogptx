@@ -1,3 +1,5 @@
+import logging
+import time
 from dataclasses import dataclass
 
 import jax
@@ -5,9 +7,12 @@ import jax.numpy as jnp
 import tiktoken
 import tyro
 from model import GPT, PretrainedModels
-from utils import JAX_DEVICES, Config, JaxDevicesEnum, JaxDtypesEnum
+from utils import Config, JaxDevicesEnum, JaxDtypesEnum
 
 PREFIX = "FILE:"
+
+
+log = logging.getLogger(__file__)
 
 
 @dataclass(kw_only=True)
@@ -24,6 +29,11 @@ class SampleConfig(Config):
     seed: int = 1337  # Random seed
     device: JaxDevicesEnum = list(JaxDevicesEnum)[0]  # Device to use
     dtype: JaxDtypesEnum = JaxDtypesEnum.float32  # Data type
+
+    @property
+    def device_jax(self):
+        """JAX device"""
+        return self.device.value
 
     @property
     def prompt(self):
@@ -44,11 +54,9 @@ def sample(config):
     def decode(str_):
         return enc.decode(str_)
 
-    device = JAX_DEVICES[config.device]
+    x = jnp.array(encode(config.prompt), device=config.device_jax)[None, ...]
 
-    x = jnp.array(encode(config.prompt), device=device)[None, ...]
-
-    model = GPT.from_pretrained(config.init_from, device=device)
+    model = GPT.from_pretrained(config.init_from, device=config.device_jax)
 
     for _ in range(config.num_samples):
         y = model.generate(
@@ -64,4 +72,12 @@ def sample(config):
 
 if __name__ == "__main__":
     config = tyro.cli(SampleConfig)
+
+    start_time = time.time()
     sample(config=config)
+    end_time = time.time()
+
+    tokens_per_second = (config.num_samples * config.max_new_tokens) / (
+        end_time - start_time
+    )
+    log.info(f"Sampled at {tokens_per_second:.2f} TPS")

@@ -16,6 +16,7 @@ from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
 from utils import (
+    PATH_DATA,
     JaxDevicesEnum,
     JaxDtypesEnum,
     join_path,
@@ -522,7 +523,7 @@ class GPT:
     def from_pretrained(cls, model_type, device=None) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
-        path = PATH / f"data/models/{model_type.value}/model.safetensors"
+        path = PATH_DATA / f"models/{model_type.value}/model.safetensors"
 
         if not path.exists():
             raise FileNotFoundError(
