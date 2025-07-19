@@ -12,7 +12,7 @@ import optax
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
-from utils import PATH_DATA, Config, JaxDevicesEnum
+from utils import PATH_DATA, Config, JaxDevicesEnum, asdict_str
 
 log = logging.getLogger(__file__)
 
@@ -25,8 +25,6 @@ InitFrom = enum.Enum(
 @dataclass(kw_only=True)
 class IOConfig:
     """Training configuration"""
-
-    out_dir: str = "data/models/checkpoints"
     eval_interval: int = 2000
     log_interval: int = 1
     eval_iters: int = 200
@@ -237,8 +235,14 @@ if __name__ == "__main__":
     data_loader_train = DatasetLoader.read(path_json, key="shards-train")
     data_loader_validate = DatasetLoader.read(path_json, key="shards-val")
 
-    trainer.train(
+    model = trainer.train(
         model=model,
         data_loader_train=data_loader_train,
         data_loader_validate=data_loader_validate,
     )
+
+    filename = (
+        PATH_DATA / "checkpoints" / f"model-{config.wandb_run_name}-final.safetensors"
+    )
+
+    model.write(filename, metadata=asdict_str(config))

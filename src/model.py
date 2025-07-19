@@ -19,6 +19,7 @@ from utils import (
     PATH_DATA,
     JaxDevicesEnum,
     JaxDtypesEnum,
+    asdict_str,
     join_path,
     register_dataclass_jax,
 )
@@ -568,13 +569,18 @@ class GPT:
 
         return tree_util.tree_unflatten(treedef, data_model.values())
 
-    def write(self, path):
+    def write(self, path, metadata=None):
         """Write model to safetensors file"""
         paths, _ = tree_util.tree_flatten_with_path(self)
         data = {join_path(path): value for path, value in paths}
 
+        metadata_model = asdict_str(self.to_config())
+
+        if metadata:
+            metadata_model.update(metadata)
+
         log.info(f"Writing model to {path}")
-        save_file(data, path)
+        save_file(data, path, metadata=metadata_model)
 
     def generate(self, idx, max_new_tokens, rng_key, temperature=1.0, top_k=None):
         """Generate new tokens"""

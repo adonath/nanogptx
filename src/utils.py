@@ -16,6 +16,11 @@ TAB_WIDTH = 4
 PATH_DATA = Path(__file__).parent.parent / "data"
 
 
+def asdict_str(datacls):
+    """Return a dict with str values"""
+    return {key: str(value) for key, value in asdict(datacls).items()}
+
+
 class register_dataclass_jax:
     """Decorator to register a dataclass with JAX."""
 
