@@ -150,6 +150,7 @@ class GPTTrainer:
 
     optimizer: optax.GradientTransformation = field(default=optax.adamw)
     max_iters: int = 60_000
+    eval_iter: int = 1
     seed: int = 71363
     show_progress: bool = True
 
@@ -207,14 +208,14 @@ class GPTTrainer:
 
         rng = jax.random.key(self.seed)
 
-        n_iter = 0
-
         with tqdm(
             total=self.max_iters,
             disable=not self.show_progress,
             unit=" Iters",
         ) as pbar:
-            for batch in data_loader_train:  # x should be an iterable of batches
+            for n_iter, batch in enumerate(
+                data_loader_train
+            ):  # x should be an iterable of batches
                 rng, subkey = jax.random.split(rng)
                 model, opt_state, loss = train_step(model, opt_state, batch, subkey)
                 # Optionally log loss, save checkpoints, etc.
@@ -224,7 +225,6 @@ class GPTTrainer:
                     break
 
                 pbar.update(1)
-                n_iter += 1
 
         return model
 
