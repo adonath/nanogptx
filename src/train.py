@@ -24,12 +24,11 @@ InitFrom = enum.Enum(
 
 # fmt: off
 @dataclass(kw_only=True)
-class IOConfig:
+class TrainingConfig:
     """Training configuration"""
-    eval_interval: int = 2000
     log_interval: int = 1
+    eval_interval: int = 2000
     eval_iters: int = 200
-    eval_only: bool = False  # if True, script exits right after the first eval
     always_save_checkpoint: bool = (
         True  # if True, always save a checkpoint after each evals
     )
@@ -68,7 +67,7 @@ class OptimizerConfig:
 
 
 @dataclass(kw_only=True)
-class TrainerConfig(Config, IOConfig, GPTConfig, WAndBConfig, OptimizerConfig):
+class TrainerConfig(Config, TrainingConfig, GPTConfig, WAndBConfig, OptimizerConfig):
     """Global trainig config"""
 
     ...
@@ -150,7 +149,8 @@ class GPTTrainer:
 
     optimizer: optax.GradientTransformation = field(default=optax.adamw)
     max_iters: int = 60_000
-    eval_iter: int = 1
+    eval_iters: int = 3
+    eval_interval: int = 10
     seed: int = 71363
     show_progress: bool = True
 
@@ -182,23 +182,46 @@ class GPTTrainer:
             optax.apply_every(config.gradient_accumulation_steps),
         )
 
-        return cls(optimizer=optimizer, seed=config.seed, max_iters=config.max_iters)
+        return cls(
+            optimizer=optimizer,
+            seed=config.seed,
+            max_iters=config.max_iters,
+            eval_iters=config.eval_iters,
+            eval_interval=config.eval_interval,
+        )
 
     def train(self, model, data_loader_train, data_loader_validate):
         """Train model"""
 
-        def loss_fn(model, batch, rng_key):
+        def loss_fn(model, batch, rng_key, is_training):
             """Loss fucntion"""
-            logits = model(batch.x, rng_key, is_training=True)
+            logits = model(batch.x, rng_key, is_training=is_training)
             loss = optax.softmax_cross_entropy_with_integer_labels(
                 logits, batch.y
             ).mean()
             return loss
 
+        def estimate_mean_loss(model, data_loader, n_iter):
+            """Estimat emean loss across mutiple iters"""
+            losses = []
+
+            # the range constrains the infinite data loader
+            for _, batch in zip(range(n_iter), data_loader):
+                # the key can be ignored here, because dropout is skipped
+                losses.append(
+                    loss_fn(
+                        model, batch, rng_key=jax.random.key(8273), is_training=False
+                    )
+                )
+
+            return np.mean(losses)
+
         @jax.jit
         def train_step(model, opt_state, batch, rng):
             """Training step"""
-            loss, grads = jax.value_and_grad(loss_fn)(model, batch, rng)
+            loss, grads = jax.value_and_grad(loss_fn)(
+                model, batch, rng, is_training=True
+            )
             updates, opt_state = self.optimizer.update(grads, opt_state, model)
             params = optax.apply_updates(model, updates)
             return params, opt_state, loss
@@ -210,9 +233,19 @@ class GPTTrainer:
 
         with tqdm(total=self.max_iters, disable=not self.show_progress) as pbar:
             for n_iter, batch in zip(range(self.max_iters), data_loader_train):
+                if n_iter % self.eval_interval:
+                    loss_train = estimate_mean_loss(
+                        model, data_loader_train, n_iter=self.eval_iters
+                    )
+                    loss_val = estimate_mean_loss(
+                        model, data_loader_validate, n_iter=self.eval_iters
+                    )
+                    pbar.set_postfix_str(
+                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f},"
+                    )
+
                 rng, subkey = jax.random.split(rng)
                 model, opt_state, loss = train_step(model, opt_state, batch, subkey)
-                pbar.set_postfix_str(f"Loss: {loss:.3f}")
                 pbar.update(1)
 
         return model
