@@ -189,7 +189,7 @@ PIPELINES = {
 def prepare(config):
     """Prepare and tokenize data"""
     pipeline = PIPELINES[config.dataset]
-    filenames = (PATH_DATA / f"download/{config.dataset}").glob("*.*")
+    filenames = list((PATH_DATA / f"download/{config.dataset}").glob("*.*"))
 
     if config.dataset == DatasetEnum.openwebtext:
         filenames = expand_filenames_openwebtext(filenames)
