@@ -208,16 +208,11 @@ class GPTTrainer:
 
         rng = jax.random.key(self.seed)
 
-        with tqdm(
-            total=self.max_iters,
-            disable=not self.show_progress,
-            unit=" Iters",
-        ) as pbar:
+        with tqdm(total=self.max_iters, disable=not self.show_progress) as pbar:
             for n_iter, batch in zip(range(self.max_iters), data_loader_train):
                 rng, subkey = jax.random.split(rng)
                 model, opt_state, loss = train_step(model, opt_state, batch, subkey)
-                # Optionally log loss, save checkpoints, etc.
-                pbar.set_description(f"N_iter {n_iter}, Loss: {loss:.3f}")
+                pbar.set_postfix_str(f"Loss: {loss:.3f}")
                 pbar.update(1)
 
         return model
