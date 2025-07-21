@@ -12,6 +12,7 @@ import optax
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
+from tqdm import tqdm
 from utils import PATH_DATA, Config, JaxDevicesEnum, asdict_str
 
 log = logging.getLogger(__file__)
@@ -146,6 +147,7 @@ class GPTTrainer:
     optimizer: optax.GradientTransformation = field(default=optax.adamw)
     max_iters: int = 60_000
     seed: int = 71363
+    show_progress: bool = True
 
     @classmethod
     def from_config(cls, config):
@@ -203,16 +205,22 @@ class GPTTrainer:
 
         n_iter = 0
 
-        for batch in data_loader_train:  # x should be an iterable of batches
-            rng, subkey = jax.random.split(rng)
-            model, opt_state, loss = train_step(model, opt_state, batch, subkey)
-            # Optionally log loss, save checkpoints, etc.
-            print(f"N iter {n_iter}, Loss: {loss}")
+        with tqdm(
+            total=self.max_iters,
+            disable=not self.show_progress,
+            unit=" Iters",
+        ) as pbar:
+            for batch in data_loader_train:  # x should be an iterable of batches
+                rng, subkey = jax.random.split(rng)
+                model, opt_state, loss = train_step(model, opt_state, batch, subkey)
+                # Optionally log loss, save checkpoints, etc.
+                pbar.set_description(f"N_iter {n_iter}, Loss: {loss:.3f}")
 
-            if n_iter == self.max_iters:
-                break
+                if n_iter == self.max_iters:
+                    break
 
-            n_iter += 1
+                pbar.update(1)
+                n_iter += 1
 
         return model
 
@@ -255,4 +263,5 @@ if __name__ == "__main__":
         PATH_DATA / "checkpoints" / f"model-{config.wandb_run_name}-final.safetensors"
     )
 
+    filename.parent.mkdir(parents=True, exist_ok=True)
     model.write(filename, metadata=asdict_str(config))
