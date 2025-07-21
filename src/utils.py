@@ -45,7 +45,7 @@ def get_jax_devices():
     """Get available devices"""
     available_devices = {}
 
-    for device_type in ["tpu", "gpu", "cpu"]:
+    for device_type in ["tpu", "gpu", "METAL", "cpu"]:
         try:
             devices = jax.devices(device_type)
         except RuntimeError:
