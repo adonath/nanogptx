@@ -96,7 +96,7 @@ class DatasetLoader:
     device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
     block_size: int = 1024
     seed: int = 78127
-    dtype: jnp.dtype = jnp.int64
+    dtype: jnp.dtype = jnp.int32
     filenames: list[str] = field(default_factory=[])
     n_tokens_total: int | None = None
 
