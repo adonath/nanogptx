@@ -8,14 +8,11 @@ version = "0.1.0"
 [tasks]
 
 [activation.env]
-JAX_ENABLE_X64="1"
-JAX_COMPILATION_CACHE_DIR=".jax_cache"
 JAX_TRACEBACK_FILTERING="off"
 
 [dependencies]
-jax = ">=0.5.0,<0.7"
 safetensors = ">=0.5.3,<0.6"
-python = ">=3.13.5,<3.14"
+python = ">=3.12.11,<3.14"
 requests = ">=2.32.4,<3"
 tiktoken = ">=0.9.0,<0.10"
 tqdm = ">=4.67.1,<5"
@@ -25,6 +22,7 @@ optax = ">=0.2.4,<0.3"
 
 [pypi-dependencies]
 tomli-w = ">=1.2.0, <2"
+clouseau = { git = "https://github.com/adonath/clouseau.git", branch = "main" }
 
 [system-requirements]
 cuda = "12"
@@ -34,18 +32,20 @@ jax = ">=0.5.0,<0.7"
 
 [feature.gpu.activation.env]
 JAX_DEFAULT_MATMUL_PRECISION="float32"
+JAX_COMPILATION_CACHE_DIR=".jax_cache"
 
 [feature.gpu.target.linux-64.pypi-dependencies]
 jax = { version = "*", extras = ["cuda12"] }
 
-[feature.gpu-jax-metal.target.osx-arm64.dependencies]
-jax = "==0.5.0"
-
-[feature.gpu-jax-metal.target.osx-arm64.pypi-dependencies]
+[feature.gpu-mps.target.osx-arm64.pypi-dependencies]
+jax = ">=0.5.0"
 jax-metal = ">=0.0.7"
 
+[feature.gpu-mps.activation.env]
+JAX_ENABLE_X64="0"
+ENABLE_PJRT_COMPATIBILITY="1"
 
 [environments]
 cpu = ["cpu"]
 gpu = ["gpu"]
-gpu-jax-metal = ["gpu-jax-metal"]
+gpu-mps = ["gpu-mps"]
