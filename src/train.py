@@ -28,13 +28,14 @@ class TrainingConfig:
     """Training configuration"""
     log_interval: int = 1
     eval_interval: int = 2000
-    eval_iters: int = 200
+    eval_iters: int = 3
     always_save_checkpoint: bool = (
         True  # if True, always save a checkpoint after each evals
     )
     init_from: InitFrom = InitFrom.scratch
     dataset: Literal["openwebtext", "shakespeare"] = "openwebtext"
     batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
+    show_progress: bool = True # show progress bar
 
 
 @dataclass(kw_only=True)
@@ -149,7 +150,7 @@ class GPTTrainer:
 
     optimizer: optax.GradientTransformation = field(default=optax.adamw)
     max_iters: int = 60_000
-    eval_iters: int = 3
+    eval_iters: int = 1
     eval_interval: int = 10
     seed: int = 71363
     show_progress: bool = True
@@ -188,6 +189,7 @@ class GPTTrainer:
             max_iters=config.max_iters,
             eval_iters=config.eval_iters,
             eval_interval=config.eval_interval,
+            show_progress=config.show_progress,
         )
 
     def train(self, model, data_loader_train, data_loader_validate):
@@ -202,17 +204,13 @@ class GPTTrainer:
             return loss
 
         def estimate_mean_loss(model, data_loader, n_iter):
-            """Estimat emean loss across mutiple iters"""
+            """Estimate mean loss across multiple iters"""
             losses = []
-
+            rng_key = jax.random.key(8273)
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
                 # the key can be ignored here, because dropout is skipped
-                losses.append(
-                    loss_fn(
-                        model, batch, rng_key=jax.random.key(8273), is_training=False
-                    )
-                )
+                losses.append(loss_fn(model, batch, rng_key=rng_key, is_training=False))
 
             return np.mean(losses)
 
