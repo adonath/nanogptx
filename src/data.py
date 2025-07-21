@@ -43,6 +43,7 @@ class DatasetEnum(StrEnum):
     fineweb_100b = "fineweb-100b"
     fineweb_edu_10b = "fineweb-edu-10b"
     fineweb_edu_100b = "fineweb-edu-100b"
+    tinystories = "tinystories"
 
 
 @dataclass
