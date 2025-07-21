@@ -67,7 +67,14 @@ class OptimizerConfig:
 # fmt: on
 
 
-Batch = namedtuple("Batch", ["x", "y"])
+@dataclass(kw_only=True)
+class TrainerConfig(Config, IOConfig, GPTConfig, WAndBConfig, OptimizerConfig):
+    """Global trainig config"""
+
+    ...
+
+
+Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
 @dataclass
@@ -91,6 +98,7 @@ class DatasetLoader:
     seed: int = 78127
     dtype: jnp.dtype = jnp.int64
     filenames: list[str] = field(default_factory=[])
+    n_tokens_total: int | None = None
 
     @classmethod
     def read(cls, path, key="shards-train", **kwargs):
@@ -101,7 +109,9 @@ class DatasetLoader:
 
         filenames = [path.parent / _ for _ in data[key]]
 
-        return cls(filenames=filenames, **kwargs)
+        n_tokens_total = data["n-tokens"]
+
+        return cls(filenames=filenames, n_tokens_total=n_tokens_total, **kwargs)
 
     @property
     def n_shards(self):
@@ -113,31 +123,25 @@ class DatasetLoader:
 
         while True:
             # choose random shard
-            shard_idx = random_state.integers(self.n_shards)
+            idx_shard = random_state.integers(self.n_shards)
 
             # TODO: load straight to device for zero copy
-            filename = self.filenames[shard_idx]
+            filename = self.filenames[idx_shard]
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 log.info(f"Reading {filename}")
-                data = f.get_tensor("tokens")
+                spec = {"device": self.device.value, "dtype": self.dtype}
+                data = jnp.asarray(f.get_tensor("tokens"), **spec)
 
             # we aim for a statistical coverage here...
-            for idx in range(len(data) // (self.batch_size * self.block_size)):
+            for _ in range(len(data) // (self.batch_size * self.block_size)):
                 max_val = len(data) - self.block_size
-                ix = random_state.integers(max_val, size=(self.batch_size,))
+                idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
-                spec = {"device": self.device.value, "dtype": self.dtype}
-
-                x = jnp.stack(
-                    [jnp.asarray(data[i : i + self.block_size], **spec) for i in ix]
-                )
+                x = jnp.stack([data[i : i + self.block_size] for i in idx_batches])
                 y = jnp.stack(
-                    [
-                        jnp.asarray(data[i + 1 : i + 1 + self.block_size], **spec)
-                        for i in ix
-                    ]
+                    [data[i + 1 : i + 1 + self.block_size] for i in idx_batches]
                 )
-                yield Batch(x=x, y=y)
+                yield Batch(x=x, y=y, idx_shard=idx_shard, idx_batches=idx_batches)
 
 
 @dataclass
@@ -225,15 +229,8 @@ class GPTTrainer:
         return model
 
 
-@dataclass(kw_only=True)
-class GlobalConfig(Config, IOConfig, GPTConfig, WAndBConfig, OptimizerConfig):
-    """Global trainig config"""
-
-    ...
-
-
 if __name__ == "__main__":
-    config = tyro.cli(GlobalConfig)
+    config = tyro.cli(TrainerConfig)
 
     model = GPT.from_config(config)
 
@@ -246,12 +243,17 @@ if __name__ == "__main__":
         block_size=config.block_size,
         batch_size=config.batch_size,
     )
+
+    log.info(f"Train has {data_loader_train.n_tokens_total} tokens.")
+
     data_loader_validate = DatasetLoader.read(
         path_json,
         key="shards-val",
         block_size=config.block_size,
         batch_size=config.batch_size,
     )
+
+    log.info(f"Val has {data_loader_train.n_tokens_total} tokens.")
 
     model = trainer.train(
         model=model,
