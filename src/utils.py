@@ -75,6 +75,20 @@ JAX_DTYPES = get_jax_dtypes()
 JaxDtypesEnum = enum.Enum("JaxDtypesEnum", JAX_DTYPES)
 
 
+def dot_product_attention_simple(query, key, value, mask=None):
+    """Simple scaled dot product attention, can be used with mps"""
+    d_k = query.shape[-1]
+    attn_logits = jnp.matmul(query, jnp.swapaxes(key, -2, -1))
+    attn_logits = attn_logits / jnp.sqrt(d_k)
+
+    if mask is not None:
+        attn_logits = jnp.where(mask == 0, -9e15, attn_logits)
+
+    attention = jax.nn.softmax(attn_logits, axis=-1)
+    values = jnp.matmul(attention, value)
+    return values
+
+
 def assert_shapes_equal(pytree, other_pytree):
     """Assert that the array shapes of two models are equal."""
     paths, treedef = tree_util.tree_flatten_with_path(pytree)
