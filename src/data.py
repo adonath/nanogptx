@@ -189,13 +189,11 @@ def apply(pipeline, filename):
     return reduce(step, pipeline, filename)
 
 
-# fmt: off
 PIPELINE_STEPS = {
     DatasetEnum.shakespeare: [read_txt_shakespeare, prepocess, tokenize],
     DatasetEnum.openwebtext: [read_xz_from_tar, prepocess, tokenize],
     DatasetEnum.tinystories: [read_json_tinystories, prepocess, tokenize],
 }
-# fmt: on
 
 
 def prepare(config):
