@@ -10,6 +10,7 @@ from itertools import repeat
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
+import jax
 import numpy as np
 import tiktoken
 import tyro
@@ -29,9 +30,6 @@ class EncodingEnum:
 
 
 DTYPES = {EncodingEnum.gpt2: np.uint16}
-
-
-# TODO: check the new shakespeare processing here: https://github.com/karpathy/llm.c/blob/master/dev/data/tinyshakespeare.py#L61
 
 
 class DatasetEnum(StrEnum):
@@ -60,32 +58,32 @@ class DataPreparationConfig:
     write_summary_only: bool = False  # write summary statistics json file
 
 
-def prepocess(sequence):
+def prepocess(document: str):
     """Preprocess sequence"""
-    return re.sub("\n\n\n+", "\n\n", sequence).strip()
+    return re.sub("\n\n\n+", "\n\n", document).strip()
 
 
-def tokenize(sequence, encoding=EncodingEnum.gpt2):
+def tokenize(document, encoding=EncodingEnum.gpt2) -> list[jax.Array]:
     """Tokenize a sequence"""
     enc = tiktoken.get_encoding(encoding)
     eot = enc._special_tokens["<|endoftext|>"]
 
     tokens = [eot]  # the special <|endoftext|> token delimits all documents
-    tokens.extend(enc.encode_ordinary(sequence))
+    tokens.extend(enc.encode_ordinary(document))
     return jnp.array(tokens).astype(DTYPES[encoding])
 
 
-def read_txt(filename):
+def read_txt_shakespeare(filename) -> list[str]:
     """Read filename"""
     log.info(f"Reading {filename}")
 
     with open(filename, "r", encoding="utf-8") as f:
         data = f.read()
 
-    return data
+    return data.split("\n\n")
 
 
-def read_xz_from_tar(tar_path, xz_filename):
+def read_xz_from_tar(tar_path, xz_filename) -> list[str]:
     """Read a tarfile and extract the compressed content"""
 
     with tarfile.open(tar_path, "r") as tar:
@@ -94,6 +92,15 @@ def read_xz_from_tar(tar_path, xz_filename):
         data = decompressed_data.decode("utf-8")
 
     return data
+
+
+def read_json_tinystories(json_filename) -> list[str]:
+    """Read a tarfile and extract json"""
+
+    with json_filename.open("r") as json_file:
+        data = json.load(json_file)
+
+    return [_["story"] for _ in data]
 
 
 def read_parquet():
@@ -116,22 +123,8 @@ def write_safetensors(tokens, filename, encoding):
     save_file(data, filename, metadata=metadata)
 
 
-def apply(pipeline, filename):
-    """Apply pipeline steps in series"""
-
-    def unpack(f, args):
-        if isinstance(args, tuple):
-            return f(*args)
-
-        return f(args)
-
-    return reduce(lambda x, f: unpack(f, x), pipeline, filename)
-
-
-def write_summary(path, shards_val_idxs):
-    """Write summary stats file"""
-    filenames = list(Path(path).glob("*.safetensors"))
-
+def generate_summary(filenames, suffix):
+    """Generate summary for a give set of shards"""
     for idx, filename in enumerate(filenames):
         with safe_open(filename, framework="numpy") as f:
             if idx == 0:
@@ -143,23 +136,27 @@ def write_summary(path, shards_val_idxs):
             n_tokens += int(f.metadata()["n-tokens"])
             stats += f.get_tensor("stats")
 
+    return {
+        f"n-tokens-{suffix}": n_tokens,
+        f"token-stats-{suffix}": stats.tolist(),
+        "encoding": encoding,
+    }
+
+
+def write_summary(path, shards_val_idxs):
+    """Write summary stats file"""
     shards_train, shards_val = [], []
 
-    for filename in filenames:
-        shard_idx = int(filename.stem.split("_")[-1])
-        if shard_idx in shards_val_idxs:
-            shards_val.append(filename.name)
-            continue
-
-        shards_train.append(filename.name)
+    for filename in Path(path).glob("*.safetensors"):
+        idx = int(filename.stem.split("_")[-1])
+        (shards_train, shards_val)[idx in shards_val_idxs].append(filename)
 
     data = {
-        "n-tokens": n_tokens,
-        "encoding": encoding,
-        "shards-train": shards_train,
-        "shards-val": shards_val,
-        "token-stats": stats.tolist(),
+        "shards-train": [_.name for _ in shards_train],
+        "shards-val": [_.name for _ in shards_val],
     }
+    data.update(generate_summary(shards_train, suffix="train"))
+    data.update(generate_summary(shards_val, suffix="val"))
 
     filename_json = path / "summary-stats.json"
 
@@ -180,15 +177,30 @@ def expand_filenames_openwebtext(filenames):
     return filenames_expanded
 
 
-PIPELINES = {
-    DatasetEnum.shakespeare: partial(apply, [read_txt, prepocess, tokenize]),
-    DatasetEnum.openwebtext: partial(apply, [read_xz_from_tar, prepocess, tokenize]),
+def apply(pipeline, filename):
+    """Apply pipeline steps in series"""
+
+    def step(x, f):
+        if isinstance(x, Path):
+            return f(x)
+
+        return list(map(f, x))
+
+    return reduce(step, pipeline, filename)
+
+
+# fmt: off
+PIPELINE_STEPS = {
+    DatasetEnum.shakespeare: [read_txt_shakespeare, prepocess, tokenize],
+    DatasetEnum.openwebtext: [read_xz_from_tar, prepocess, tokenize],
+    DatasetEnum.tinystories: [read_json_tinystories, prepocess, tokenize],
 }
+# fmt: on
 
 
 def prepare(config):
     """Prepare and tokenize data"""
-    pipeline = PIPELINES[config.dataset]
+    pipeline = partial(apply, PIPELINE_STEPS[config.dataset])
     filenames = list((PATH_DATA / f"download/{config.dataset}").glob("*.*"))
 
     if config.dataset == DatasetEnum.openwebtext:
@@ -207,35 +219,44 @@ def prepare(config):
             n_shard, n_tokens_total = 0, 0
             tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
 
-            for tokens in pool.imap(pipeline, filenames, chunksize=config.chunksize):
-                pbar.set_description(f"Shard {n_shard}")
+            for result in pool.imap(pipeline, filenames, chunksize=config.chunksize):
+                # each process returns a list of token sequences, where each toke sequence typically represents
+                # a document
+                for tokens in result:
+                    pbar.set_description(f"Shard {n_shard}")
 
-                if n_tokens_total + len(tokens) < config.shard_size:
-                    tokens_shard[n_tokens_total : n_tokens_total + len(tokens)] = tokens
-                    n_tokens_total += len(tokens)
-                    pbar.update(len(tokens))
-                    continue
+                    if n_tokens_total + len(tokens) < config.shard_size:
+                        tokens_shard[n_tokens_total : n_tokens_total + len(tokens)] = (
+                            tokens
+                        )
+                        n_tokens_total += len(tokens)
+                        pbar.update(len(tokens))
+                        continue
 
-                remainder = config.shard_size - n_tokens_total
-                tokens_shard[n_tokens_total:] = tokens[:remainder]
-                pbar.update(remainder)
+                    remainder = config.shard_size - n_tokens_total
+                    tokens_shard[n_tokens_total:] = tokens[:remainder]
+                    pbar.update(remainder)
 
-                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(
-                    tokens_shard, filename=filename, encoding=config.encoding
-                )
+                    filename = (
+                        path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
+                    )
+                    write_safetensors(
+                        tokens_shard, filename=filename, encoding=config.encoding
+                    )
 
-                n_shard += 1
-                n_tokens_total = len(tokens) - remainder
-                tokens_shard[:n_tokens_total] = tokens[remainder:]
+                    n_shard += 1
+                    n_tokens_total = len(tokens) - remainder
+                    tokens_shard[:n_tokens_total] = tokens[remainder:]
 
-            if n_tokens_total > 0:
-                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(
-                    tokens_shard[:n_tokens_total],
-                    filename=filename,
-                    encoding=config.encoding,
-                )
+                if n_tokens_total > 0:
+                    filename = (
+                        path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
+                    )
+                    write_safetensors(
+                        tokens_shard[:n_tokens_total],
+                        filename=filename,
+                        encoding=config.encoding,
+                    )
 
 
 if __name__ == "__main__":
