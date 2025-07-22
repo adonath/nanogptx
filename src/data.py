@@ -23,7 +23,7 @@ log = logging.getLogger(__file__)
 PATH_DATA = Path(__file__).parent.parent / "data"
 
 
-class EncodingEnum:
+class EncodingEnum(StrEnum):
     """Tokenizer"""
 
     gpt2 = "gpt2"
