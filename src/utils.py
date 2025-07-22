@@ -1,10 +1,14 @@
 import enum
+import json
 import logging
+import random
+import string
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
 
 import jax
+import requests
 import tomli_w
 import tomllib
 from jax import numpy as jnp
@@ -108,6 +112,21 @@ def join_path(path):
     """Join path to Pytree leave"""
     values = [getattr(_, "name", str(getattr(_, "idx", None))) for _ in path]
     return ".".join(values)
+
+
+def get_random_name():
+    """Generate random adjective-animal name"""
+    url = "https://raw.githubusercontent.com/fcrespo82/ubuntu-name-generator/refs/heads/master/src/app/names.ts"
+    response = requests.get(url)
+
+    text = response.content.decode("utf-8").replace("export const ubuntu_names = ", "")
+    data = json.loads(text)
+
+    letter = random.choice(string.ascii_lowercase)
+    animals = data[letter]["animals"]
+    adjectives = data[letter]["adjectives"]
+
+    return f"{random.choice(adjectives)}-{random.choice(animals)}".lower()
 
 
 @dataclass(kw_only=True)
