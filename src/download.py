@@ -62,8 +62,11 @@ def download_file(url, path):
     response = requests.get(url, params={"download": True})
 
     log.info(f"Saving to {path}")
-    with open(path, mode="wb") as file:
+    with path.open("wb") as file:
         file.write(response.content)
+
+    if path.name.endswith((".tar", ".tar.gz")):
+        extract_tar_and_remove(path, path.parent)
 
     return path
 
