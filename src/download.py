@@ -1,4 +1,5 @@
 import logging
+import tarfile
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
@@ -31,6 +32,22 @@ DATA_URLS = {
     DatasetEnum.tinystories: ["https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories_all_data.tar.gz",],
 }
 # fmt: on
+
+
+def extract_tar_and_remove(archive_path, extraction_path):
+    """Extract and remove a tar archive"""
+    mode = "r"
+
+    if archive_path.name.endswith("gz"):
+        mode += ":gz"
+
+    log.info(f"Reading {archive_path}")
+    with tarfile.open(archive_path, mode) as tar:
+        log.info(f"Extracting to {extraction_path}")
+        tar.extractall(path=extraction_path)
+
+    log.info(f"Deleting {archive_path}")
+    archive_path.unlink()
 
 
 def download_file(url, path):
