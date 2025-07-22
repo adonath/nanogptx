@@ -149,9 +149,15 @@ class Config:
         with open(path, "w") as f:
             tomli_w.dump(asdict(self), f)
 
-    def update(self, **kwds):
+    def update(self, config: dataclass = None, **kwds):
         """Update configuration"""
-        return replace(self, **kwds)
+        kwargs = {}
+
+        if config:
+            kwargs.update(asdict(config))
+
+        kwargs.update(kwds)
+        return replace(self, **kwargs)
 
     def __str__(self):
         data = {str(self.__class__.__name__): asdict(self)}
