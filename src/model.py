@@ -163,6 +163,8 @@ class Embedding:
             n_embd=config.n_embd,
             rng_key=config.rng_key,
             init_std=config.init_std,
+            device=config.device_jax,
+            dtype=config.dtype_jax,
         )
 
     def __call__(self, x):
