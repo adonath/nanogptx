@@ -17,7 +17,7 @@ from utils import PATH_DATA, Config, JaxDevicesEnum, asdict_str
 
 log = logging.getLogger(__file__)
 
-InitFrom = enum.Enum(
+InitFrom = enum.StrEnum(
     "InitFrom", {_.name: _.value for _ in PretrainedModels} | {"scratch": "scratch"}
 )
 
@@ -68,10 +68,13 @@ class OptimizerConfig:
 
 
 @dataclass(kw_only=True)
-class TrainerConfig(Config, TrainingConfig, GPTConfig, WAndBConfig, OptimizerConfig):
+class TrainerConfig(Config):
     """Global trainig config"""
 
-    ...
+    training: TrainingConfig = field(default_factory=TrainingConfig)
+    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    model: GPTConfig = field(default_factory=GPTConfig)
+    logging: WAndBConfig = field(default_factory=WAndBConfig)
 
 
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
@@ -196,7 +199,7 @@ class GPTTrainer:
         """Train model"""
 
         def loss_fn(model, batch, rng_key, is_training):
-            """Loss fucntion"""
+            """Loss function"""
             logits = model(batch.x, rng_key, is_training=is_training)
             loss = optax.softmax_cross_entropy_with_integer_labels(
                 logits, batch.y
@@ -225,7 +228,9 @@ class GPTTrainer:
             return params, opt_state, loss
 
         # Initialize optimizer state
-        opt_state = jax.device_put(self.optimizer.init(model), data_loader_train.device)
+        opt_state = self.optimizer.init(model)
+
+        print(jax.device_put(opt_state, data_loader_train.device))
 
         rng = jax.random.key(self.seed)
 
