@@ -210,53 +210,48 @@ def prepare(config):
     path = PATH_DATA / "train" / config.dataset
     path.mkdir(parents=True, exist_ok=True)
 
-    with tqdm(
+    kwargs = dict(
         total=config.shard_size,
         disable=not config.show_progress,
         unit="tokens",
-    ) as pbar:
-        with Pool(config.n_process) as pool:
-            n_shard, n_tokens_total = 0, 0
-            tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
+    )
 
-            for result in pool.imap(pipeline, filenames, chunksize=config.chunksize):
-                # each process returns a list of token sequences, where each toke sequence typically represents
-                # a document
-                for tokens in result:
-                    pbar.set_description(f"Shard {n_shard}")
+    with tqdm(**kwargs) as pbar, Pool(config.n_process) as pool:
+        n_shard, n_tokens_total = 0, 0
+        tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
 
-                    if n_tokens_total + len(tokens) < config.shard_size:
-                        tokens_shard[n_tokens_total : n_tokens_total + len(tokens)] = (
-                            tokens
-                        )
-                        n_tokens_total += len(tokens)
-                        pbar.update(len(tokens))
-                        continue
+        for result in pool.imap(pipeline, filenames, chunksize=config.chunksize):
+            # each process returns a list of token sequences, where each toke sequence typically represents
+            # a document
+            for tokens in result:
+                pbar.set_description(f"Shard {n_shard}")
 
-                    remainder = config.shard_size - n_tokens_total
-                    tokens_shard[n_tokens_total:] = tokens[:remainder]
-                    pbar.update(remainder)
+                if n_tokens_total + len(tokens) < config.shard_size:
+                    tokens_shard[n_tokens_total : n_tokens_total + len(tokens)] = tokens
+                    n_tokens_total += len(tokens)
+                    pbar.update(len(tokens))
+                    continue
 
-                    filename = (
-                        path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                    )
-                    write_safetensors(
-                        tokens_shard, filename=filename, encoding=config.encoding
-                    )
+                remainder = config.shard_size - n_tokens_total
+                tokens_shard[n_tokens_total:] = tokens[:remainder]
+                pbar.update(remainder)
 
-                    n_shard += 1
-                    n_tokens_total = len(tokens) - remainder
-                    tokens_shard[:n_tokens_total] = tokens[remainder:]
+                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
+                write_safetensors(
+                    tokens_shard, filename=filename, encoding=config.encoding
+                )
 
-                if n_tokens_total > 0:
-                    filename = (
-                        path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                    )
-                    write_safetensors(
-                        tokens_shard[:n_tokens_total],
-                        filename=filename,
-                        encoding=config.encoding,
-                    )
+                n_shard += 1
+                n_tokens_total = len(tokens) - remainder
+                tokens_shard[:n_tokens_total] = tokens[remainder:]
+
+            if n_tokens_total > 0:
+                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
+                write_safetensors(
+                    tokens_shard[:n_tokens_total],
+                    filename=filename,
+                    encoding=config.encoding,
+                )
 
 
 if __name__ == "__main__":
