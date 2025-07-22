@@ -225,7 +225,7 @@ class GPTTrainer:
             return params, opt_state, loss
 
         # Initialize optimizer state
-        opt_state = self.optimizer.init(model)
+        opt_state = jax.device_put(self.optimizer.init(model), data_loader_train.device)
 
         rng = jax.random.key(self.seed)
 
@@ -262,6 +262,7 @@ if __name__ == "__main__":
         key="shards-train",
         block_size=config.block_size,
         batch_size=config.batch_size,
+        device=config.device,
     )
 
     log.info(f"Train has {data_loader_train.n_tokens_total} tokens.")
@@ -271,6 +272,7 @@ if __name__ == "__main__":
         key="shards-val",
         block_size=config.block_size,
         batch_size=config.batch_size,
+        device=config.device,
     )
 
     log.info(f"Val has {data_loader_train.n_tokens_total} tokens.")
