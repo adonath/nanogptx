@@ -34,4 +34,3 @@ init_std = 0.02
 [logging]
 wandb_log = false
 wandb_project = "owt"
-wandb_run_name = "gpt2"

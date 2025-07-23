@@ -120,7 +120,10 @@ def join_path(path):
 def get_random_name():
     """Generate random adjective-animal name"""
     url = "https://raw.githubusercontent.com/fcrespo82/ubuntu-name-generator/refs/heads/master/src/app/names.ts"
-    response = requests.get(url)
+    try:
+        response = requests.get(url, timeout=1)
+    except requests.exceptions.Timeout:
+        return "lazy-lama"
 
     text = response.content.decode("utf-8").replace("export const ubuntu_names = ", "")
     data = json.loads(text)
