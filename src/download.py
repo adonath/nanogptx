@@ -43,11 +43,13 @@ def extract_tar_and_remove(archive_path, extraction_path):
 
     log.info(f"Reading {archive_path}")
     with tarfile.open(archive_path, mode) as tar:
-        log.info(f"Extracting to {extraction_path}")
         for member in tar.getmembers():
-            if member.isreg():
-                member.name = Path(member.name).name
-                tar.extract(member, extraction_path)
+            if not member.isreg():
+                continue
+
+            log.info(f"Extracting {member.name} to {extraction_path}")
+            member.name = Path(member.name).name
+            tar.extract(member, extraction_path)
 
     log.info(f"Deleting {archive_path}")
     archive_path.unlink()
