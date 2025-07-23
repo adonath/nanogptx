@@ -1,11 +1,10 @@
-import enum
 import json
 import logging
 import random
 import string
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import jax
 import requests
@@ -65,21 +64,22 @@ def get_jax_devices():
 
 
 JAX_DEVICES = get_jax_devices()
-JaxDevicesEnum = enum.StrEnum("JaxDevicesEnum", asdict_str(JAX_DEVICES))
+AvailableJaxDevices = Literal[tuple(JAX_DEVICES)]
 
 
 def get_jax_dtypes():
     """Get available dtypes"""
-    dtypes = {"float32": jnp.float32, "bfloat16": jnp.bfloat16}
+    dtypes = {"float32": jnp.float32, "bfloat16": jnp.bfloat16, "int32": jnp.int32}
 
     if jax.config.values.get("jax_enable_x64", False):
         dtypes["float64"] = jnp.float64
+        dtypes["int64"] = jnp.int64
 
     return dtypes
 
 
 JAX_DTYPES = get_jax_dtypes()
-JaxDtypesEnum = enum.StrEnum("JaxDtypesEnum", asdict_str(JAX_DTYPES))
+AvailableJaxDtypes = Literal[tuple(JAX_DTYPES)]
 
 
 def dot_product_attention_simple(query, key, value, mask=None):

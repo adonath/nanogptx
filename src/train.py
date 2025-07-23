@@ -20,8 +20,8 @@ from utils import (
     JAX_DTYPES,
     PATH_BASE,
     PATH_DATA,
-    JaxDevicesEnum,
-    JaxDtypesEnum,
+    AvailableJaxDevices,
+    AvailableJaxDtypes,
     asdict_str,
     get_random_name,
 )
@@ -40,19 +40,19 @@ class GlobalConfig:
     """GLobal config"""
 
     seed: int = 9283  # Random seed
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
+    dtype: AvailableJaxDtypes = "float32"
     _key = None
 
     @property
     def device_jax(self):
         """Return actual device"""
-        return JAX_DEVICES[self.device.value]
+        return JAX_DEVICES[self.device]
 
     @property
     def dtype_jax(self):
         """Return actual device"""
-        return JAX_DTYPES[self.dtype.value]
+        return JAX_DTYPES[self.dtype]
 
     @property
     def rng_key(self) -> jax.Array:
@@ -156,10 +156,10 @@ class DatasetLoader:
     """
 
     batch_size: int = 12
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
+    device: str = list(JAX_DEVICES)[0]
     block_size: int = 1024
     seed: int = 78127
-    dtype: jnp.dtype = jnp.int32
+    dtype: str = "int32"
     filenames: list[str] = field(default_factory=[])
     n_tokens_total: int | None = None
 
@@ -170,7 +170,7 @@ class DatasetLoader:
         with path.open("r") as f:
             data = json.load(f)
 
-        filenames = [path.parent / _ for _ in data[f"shard-{suffix}"]]
+        filenames = [path.parent / _ for _ in data[f"shards-{suffix}"]]
 
         n_tokens_total = data[f"token-stats-{suffix}"]
 
@@ -192,7 +192,10 @@ class DatasetLoader:
             filename = self.filenames[idx_shard]
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 log.info(f"Reading {filename}")
-                spec = {"device": self.device.value, "dtype": self.dtype}
+                spec = {
+                    "device": JAX_DEVICES[self.device],
+                    "dtype": JAX_DTYPES[self.dtype],
+                }
                 data = jnp.asarray(f.get_tensor("tokens"), **spec)
 
             # we aim for a statistical coverage here...
