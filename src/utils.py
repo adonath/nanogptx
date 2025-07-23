@@ -3,7 +3,7 @@ import json
 import logging
 import random
 import string
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -20,9 +20,13 @@ TAB_WIDTH = 4
 PATH_DATA = Path(__file__).parent.parent / "data"
 
 
-def asdict_str(datacls):
+def asdict_str(data):
     """Return a dict with str values"""
-    return {key: str(value) for key, value in asdict(datacls).items()}
+
+    if is_dataclass(data):
+        data = asdict(data)
+
+    return {key: str(value) for key, value in data.items()}
 
 
 class register_dataclass_jax:
@@ -49,9 +53,9 @@ def get_jax_devices():
     """Get available devices"""
     available_devices = {}
 
-    for device_type in ["tpu", "gpu", "METAL", "cpu"]:
+    for backend in ["tpu", "gpu", "METAL", "cpu"]:
         try:
-            devices = jax.devices(device_type)
+            devices = jax.devices(backend)
         except RuntimeError:
             continue
 
@@ -62,7 +66,7 @@ def get_jax_devices():
 
 
 JAX_DEVICES = get_jax_devices()
-JaxDevicesEnum = enum.Enum("JaxDevicesEnum", JAX_DEVICES)
+JaxDevicesEnum = enum.StrEnum("JaxDevicesEnum", asdict_str(JAX_DEVICES))
 
 
 def get_jax_dtypes():
@@ -76,7 +80,7 @@ def get_jax_dtypes():
 
 
 JAX_DTYPES = get_jax_dtypes()
-JaxDtypesEnum = enum.Enum("JaxDtypesEnum", JAX_DTYPES)
+JaxDtypesEnum = enum.StrEnum("JaxDtypesEnum", asdict_str(JAX_DTYPES))
 
 
 def dot_product_attention_simple(query, key, value, mask=None):
@@ -146,19 +150,46 @@ class Config:
         """Write configuration to file"""
         log.info(f"Writing configuration to {path}")
 
-        with open(path, "w") as f:
+        if not self.configfile:
+            self.configfile = path.name
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with path.open("wb") as f:
             tomli_w.dump(asdict(self), f)
-
-    def update(self, config: dataclass = None, **kwds):
-        """Update configuration"""
-        kwargs = {}
-
-        if config:
-            kwargs.update(asdict(config))
-
-        kwargs.update(kwds)
-        return replace(self, **kwargs)
 
     def __str__(self):
         data = {str(self.__class__.__name__): asdict(self)}
         return tomli_w.dumps(data, indent=TAB_WIDTH)
+
+
+@dataclass(kw_only=True)
+class GlobalConfig:
+    """GLobal config"""
+
+    seed: int = 9283  # Random seed
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    _key = None
+
+    @property
+    def device_jax(self):
+        """Return actual device"""
+        return JAX_DEVICES[self.device.value]
+
+    @property
+    def dtype_jax(self):
+        """Return actual device"""
+        return JAX_DTYPES[self.dtype.value]
+
+    @property
+    def rng_key(self) -> jax.Array:
+        """Generate random key for initialization"""
+        if self._key is None:
+            self._key = jax.random.PRNGKey(self.seed)
+
+        # in general state based key generation is not a good idea in Jax!
+        # however the config class never(!) crosses any jit and function transform
+        # boundaries. So it is safe to use it here.
+        self._key, subkey = jax.random.split(self._key)
+        return subkey

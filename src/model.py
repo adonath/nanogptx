@@ -17,8 +17,6 @@ from safetensors import safe_open
 from safetensors.flax import save_file
 from utils import (
     PATH_DATA,
-    JaxDevicesEnum,
-    JaxDtypesEnum,
     asdict_str,
     join_path,
     register_dataclass_jax,
@@ -67,21 +65,7 @@ class GPTConfig:
     n_embd: int = 768
     dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
     use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
-    seed: int = 9283  # Random seed
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     init_std: float = INIT_STD
-    _key = None
-
-    @property
-    def device_jax(self):
-        """Return actual device"""
-        return self.device.value
-
-    @property
-    def dtype_jax(self):
-        """Return actual device"""
-        return self.dtype.value
 
     @property
     def n_embd_mlp(self) -> int:
@@ -97,18 +81,6 @@ class GPTConfig:
     def init_std_c_proj(self):
         """Standard deviation init for c proj layers"""
         return self.init_std / math.sqrt(2 * self.n_layer)
-
-    @property
-    def rng_key(self) -> jax.Array:
-        """Generate random key for initialization"""
-        if self._key is None:
-            self._key = jax.random.PRNGKey(self.seed)
-
-        # in general state based key generation is not a good idea in Jax!
-        # however the config class never(!) crosses any jit and function transform
-        # boundaries. So it is safe to use it here.
-        self._key, subkey = jax.random.split(self._key)
-        return subkey
 
     @classmethod
     def dummy(cls, n_layer: int = 12, n_head: int = 12):

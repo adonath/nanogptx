@@ -13,7 +13,14 @@ import tyro
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
 from tqdm import tqdm
-from utils import PATH_DATA, Config, JaxDevicesEnum, asdict_str
+from utils import (
+    PATH_DATA,
+    Config,
+    GlobalConfig,
+    JaxDevicesEnum,
+    asdict_str,
+    get_random_name,
+)
 
 log = logging.getLogger(__file__)
 
@@ -29,9 +36,7 @@ class TrainingConfig:
     log_interval: int = 1
     eval_interval: int = 2000
     eval_iters: int = 3
-    always_save_checkpoint: bool = (
-        True  # if True, always save a checkpoint after each evals
-    )
+    always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
     init_from: InitFrom = InitFrom.scratch
     dataset: Literal["openwebtext", "shakespeare"] = "openwebtext"
     batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
@@ -43,8 +48,8 @@ class WAndBConfig:
     """WAndB logging"""
 
     wandb_log: bool = False  # disabled by default
-    wandb_project: str = "owt"
-    wandb_run_name: str = "gpt2"  # 'run' + str(time.time())
+    wandb_project: str = "nanogptx"
+    wandb_run_name: str = field(default_factory=get_random_name)
 
 
 @dataclass(kw_only=True)
@@ -71,6 +76,7 @@ class OptimizerConfig:
 class TrainerConfig(Config):
     """Global trainig config"""
 
+    global_: GlobalConfig = field(default_factory=GlobalConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     model: GPTConfig = field(default_factory=GPTConfig)
@@ -104,15 +110,15 @@ class DatasetLoader:
     n_tokens_total: int | None = None
 
     @classmethod
-    def read(cls, path, key="shards-train", **kwargs):
+    def read(cls, path, suffix="train", **kwargs):
         """Read from json summary file"""
 
         with path.open("r") as f:
             data = json.load(f)
 
-        filenames = [path.parent / _ for _ in data[key]]
+        filenames = [path.parent / _ for _ in data[f"shard-{suffix}"]]
 
-        n_tokens_total = data["n-tokens"]
+        n_tokens_total = data[f"token-stats-{suffix}"]
 
         return cls(filenames=filenames, n_tokens_total=n_tokens_total, **kwargs)
 
@@ -230,8 +236,6 @@ class GPTTrainer:
         # Initialize optimizer state
         opt_state = self.optimizer.init(model)
 
-        print(jax.device_put(opt_state, data_loader_train.device))
-
         rng = jax.random.key(self.seed)
 
         with tqdm(total=self.max_iters, disable=not self.show_progress) as pbar:
@@ -257,14 +261,14 @@ class GPTTrainer:
 if __name__ == "__main__":
     config = tyro.cli(TrainerConfig)
 
-    model = GPT.from_config(config)
+    model = GPT.from_config(config.model)
 
     trainer = GPTTrainer.from_config(config)
 
     path_json = PATH_DATA / "train" / config.dataset / "summary-stats.json"
     data_loader_train = DatasetLoader.read(
         path_json,
-        key="shards-train",
+        suffix="train",
         block_size=config.block_size,
         batch_size=config.batch_size,
         device=config.device,
@@ -274,7 +278,7 @@ if __name__ == "__main__":
 
     data_loader_validate = DatasetLoader.read(
         path_json,
-        key="shards-val",
+        suffix="val",
         block_size=config.block_size,
         batch_size=config.batch_size,
         device=config.device,
