@@ -2,31 +2,69 @@ import enum
 import json
 import logging
 from collections import namedtuple
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Literal
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import tomli_w
+import tomllib
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
 from tqdm import tqdm
 from utils import (
+    JAX_DEVICES,
+    JAX_DTYPES,
+    PATH_BASE,
     PATH_DATA,
-    Config,
-    GlobalConfig,
     JaxDevicesEnum,
+    JaxDtypesEnum,
     asdict_str,
     get_random_name,
 )
+
+TAB_WIDTH = 4
 
 log = logging.getLogger(__file__)
 
 InitFrom = enum.StrEnum(
     "InitFrom", {_.name: _.value for _ in PretrainedModels} | {"scratch": "scratch"}
 )
+
+
+@dataclass(kw_only=True)
+class GlobalConfig:
+    """GLobal config"""
+
+    seed: int = 9283  # Random seed
+    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    _key = None
+
+    @property
+    def device_jax(self):
+        """Return actual device"""
+        return JAX_DEVICES[self.device.value]
+
+    @property
+    def dtype_jax(self):
+        """Return actual device"""
+        return JAX_DTYPES[self.dtype.value]
+
+    @property
+    def rng_key(self) -> jax.Array:
+        """Generate random key for initialization"""
+        if self._key is None:
+            self._key = jax.random.PRNGKey(self.seed)
+
+        # in general state based key generation is not a good idea in Jax!
+        # however the config class never(!) crosses any jit and function transform
+        # boundaries. So it is safe to use it here.
+        self._key, subkey = jax.random.split(self._key)
+        return subkey
 
 
 # fmt: off
@@ -73,14 +111,40 @@ class OptimizerConfig:
 
 
 @dataclass(kw_only=True)
-class TrainerConfig(Config):
-    """Global trainig config"""
+class Config:
+    """General config"""
 
     global_: GlobalConfig = field(default_factory=GlobalConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
+
+    @classmethod
+    def read(cls, path: str):
+        """Read configuration from file"""
+        log.info(f"Reading configuration from {path}")
+
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+
+        for f in fields(cls):
+            if f.name in data:
+                data[f.name] = f.type(**data[f.name])
+
+        return cls(**data)
+
+    def write(self, path: str):
+        """Write configuration to file"""
+        log.info(f"Writing configuration to {path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with path.open("wb") as f:
+            tomli_w.dump(asdict(self), f)
+
+    def __str__(self):
+        data = {str(self.__class__.__name__): asdict(self)}
+        return tomli_w.dumps(data, indent=TAB_WIDTH)
 
 
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
@@ -258,8 +322,21 @@ class GPTTrainer:
         return model
 
 
+def get_configs():
+    """Get configs from config folder"""
+    filenames = (PATH_BASE / "configs").glob("*.toml")
+
+    configs = {}
+
+    # TODO: parse desription from the first line of the toml file
+    for filename in filenames:
+        configs[filename.stem] = (filename.name, Config.read(filename))
+
+    return configs
+
+
 if __name__ == "__main__":
-    config = tyro.cli(TrainerConfig)
+    config = tyro.extras.overridable_config_cli(get_configs())
 
     model = GPT.from_config(config.model)
 

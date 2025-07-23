@@ -1,0 +1,15 @@
+[training]
+eval_interval = 2000
+eval_iters = 1
+dataset = "shakespeare"
+batch_size = 8
+
+[optimizer]
+max_iters = 10_000
+
+[model]
+block_size = 64
+n_layer = 4
+n_head = 4
+n_embd = 64
+dropout_rate = 0.0

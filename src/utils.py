@@ -3,21 +3,20 @@ import json
 import logging
 import random
 import string
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 import jax
 import requests
-import tomli_w
-import tomllib
 from jax import numpy as jnp
 from jax import tree_util
 
 log = logging.getLogger(__name__)
 
 TAB_WIDTH = 4
-PATH_DATA = Path(__file__).parent.parent / "data"
+PATH_BASE = Path(__file__).parent.parent
+PATH_DATA = PATH_BASE / "data"
 
 
 def asdict_str(data):
@@ -131,65 +130,3 @@ def get_random_name():
     adjectives = data[letter]["adjectives"]
 
     return f"{random.choice(adjectives)}-{random.choice(animals)}".lower()
-
-
-@dataclass(kw_only=True)
-class Config:
-    """Configuration class"""
-
-    @classmethod
-    def read(cls, path: str):
-        """Read configuration from file"""
-        log.info(f"Reading configuration from {path}")
-
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-            return cls(**data)
-
-    def write(self, path: str):
-        """Write configuration to file"""
-        log.info(f"Writing configuration to {path}")
-
-        if not self.configfile:
-            self.configfile = path.name
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with path.open("wb") as f:
-            tomli_w.dump(asdict(self), f)
-
-    def __str__(self):
-        data = {str(self.__class__.__name__): asdict(self)}
-        return tomli_w.dumps(data, indent=TAB_WIDTH)
-
-
-@dataclass(kw_only=True)
-class GlobalConfig:
-    """GLobal config"""
-
-    seed: int = 9283  # Random seed
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
-    _key = None
-
-    @property
-    def device_jax(self):
-        """Return actual device"""
-        return JAX_DEVICES[self.device.value]
-
-    @property
-    def dtype_jax(self):
-        """Return actual device"""
-        return JAX_DTYPES[self.dtype.value]
-
-    @property
-    def rng_key(self) -> jax.Array:
-        """Generate random key for initialization"""
-        if self._key is None:
-            self._key = jax.random.PRNGKey(self.seed)
-
-        # in general state based key generation is not a good idea in Jax!
-        # however the config class never(!) crosses any jit and function transform
-        # boundaries. So it is safe to use it here.
-        self._key, subkey = jax.random.split(self._key)
-        return subkey

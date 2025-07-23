@@ -29,9 +29,6 @@ n_head = 12
 n_embd = 768
 dropout_rate = 0.0
 use_bias = true
-seed = 9283
-device = "TFRT_CPU_0"
-dtype = "<class 'jax.numpy.float32'>"
 init_std = 0.02
 
 [logging]
