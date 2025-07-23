@@ -1,4 +1,4 @@
-[training]
+#[training]
 log_interval = 1
 eval_interval = 2000
 eval_iters = 3
@@ -8,7 +8,7 @@ dataset = "openwebtext"
 batch_size = 12
 show_progress = true
 
-[optimizer]
+#[optimizer]
 learning_rate = 0.0006
 max_iters = 600000
 weight_decay = 0.1
@@ -21,7 +21,7 @@ lr_decay_iters = 600000
 gradient_accumulation_steps = 40
 min_lr = 6e-05
 
-[model]
+#[model]
 block_size = 1024
 vocab_size = 50304
 n_layer = 12
@@ -31,6 +31,6 @@ dropout_rate = 0.0
 use_bias = true
 init_std = 0.02
 
-[logging]
+#[logging]
 wandb_log = false
 wandb_project = "owt"

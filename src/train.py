@@ -2,7 +2,7 @@ import enum
 import json
 import logging
 from collections import namedtuple
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 import jax
@@ -111,14 +111,8 @@ class OptimizerConfig:
 
 
 @dataclass(kw_only=True)
-class Config:
+class Config(GlobalConfig, TrainingConfig, GPTConfig, WAndBConfig, OptimizerConfig):
     """General config"""
-
-    global_: GlobalConfig = field(default_factory=GlobalConfig)
-    training: TrainingConfig = field(default_factory=TrainingConfig)
-    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
-    model: GPTConfig = field(default_factory=GPTConfig)
-    logging: WAndBConfig = field(default_factory=WAndBConfig)
 
     @classmethod
     def read(cls, path: str):
@@ -127,10 +121,6 @@ class Config:
 
         with open(path, "rb") as f:
             data = tomllib.load(f)
-
-        for f in fields(cls):
-            if f.name in data:
-                data[f.name] = f.type(**data[f.name])
 
         return cls(**data)
 
@@ -338,7 +328,7 @@ def get_configs():
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(get_configs())
 
-    model = GPT.from_config(config.model)
+    model = GPT.from_config(config)
 
     trainer = GPTTrainer.from_config(config)
 
