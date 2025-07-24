@@ -5,7 +5,7 @@ dataset = "shakespeare"
 batch_size = 8
 
 #[optimizer]
-max_iters = 10_000
+max_iters = 100
 
 #[model]
 block_size = 64
