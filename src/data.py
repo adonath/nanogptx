@@ -27,9 +27,39 @@ class EncodingEnum(StrEnum):
     """Tokenizer"""
 
     gpt2 = "gpt2"
+    char = "char"
 
 
 DTYPES = {EncodingEnum.gpt2: np.uint16}
+
+
+@dataclass
+class CharEncoding:
+    """Character level encoding"""
+
+    stoi: dict
+    itos: dict
+
+    @property
+    def vocab_size(self):
+        """Voca size"""
+        return len(self.stoi)
+
+    @classmethod
+    def from_text(cls, text):
+        """Generate encoding from text"""
+        chars = sorted(list(set(text)))
+        stoi = {ch: i for i, ch in enumerate(chars)}
+        itos = {i: ch for i, ch in enumerate(chars)}
+        return cls(stoi=stoi, itos=itos)
+
+    def encode(self, sequence):
+        """Encode sequence"""
+        return [self.stoi[_] for _ in sequence]
+
+    def decode(self, tokens):
+        """Encode sequence"""
+        return "".join([self.itos[_] for _ in tokens])
 
 
 class DatasetEnum(StrEnum):
@@ -190,9 +220,21 @@ def apply(pipeline, filename):
 
 
 PIPELINE_STEPS = {
-    DatasetEnum.shakespeare: [read_txt_shakespeare, prepocess, tokenize],
-    DatasetEnum.openwebtext: [read_xz_from_tar, prepocess, tokenize],
-    DatasetEnum.tinystories: [read_json_tinystories, prepocess, tokenize],
+    (DatasetEnum.shakespeare, EncodingEnum.gpt2): [
+        read_txt_shakespeare,
+        prepocess,
+        tokenize,
+    ],
+    (DatasetEnum.openwebtext, EncodingEnum.gpt2): [
+        read_xz_from_tar,
+        prepocess,
+        tokenize,
+    ],
+    (DatasetEnum.tinystories, EncodingEnum.gpt2): [
+        read_json_tinystories,
+        prepocess,
+        tokenize,
+    ],
 }
 
 
