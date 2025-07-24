@@ -30,36 +30,7 @@ class EncodingEnum(StrEnum):
     char = "char"
 
 
-DTYPES = {EncodingEnum.gpt2: np.uint16}
-
-
-@dataclass
-class CharEncoding:
-    """Character level encoding"""
-
-    stoi: dict
-    itos: dict
-
-    @property
-    def vocab_size(self):
-        """Voca size"""
-        return len(self.stoi)
-
-    @classmethod
-    def from_text(cls, text):
-        """Generate encoding from text"""
-        chars = sorted(list(set(text)))
-        stoi = {ch: i for i, ch in enumerate(chars)}
-        itos = {i: ch for i, ch in enumerate(chars)}
-        return cls(stoi=stoi, itos=itos)
-
-    def encode(self, sequence):
-        """Encode sequence"""
-        return [self.stoi[_] for _ in sequence]
-
-    def decode(self, tokens):
-        """Encode sequence"""
-        return "".join([self.itos[_] for _ in tokens])
+DTYPES = {EncodingEnum.gpt2: np.uint16, EncodingEnum.char: np.uint16}
 
 
 class DatasetEnum(StrEnum):
@@ -72,6 +43,48 @@ class DatasetEnum(StrEnum):
     fineweb_edu_10b = "fineweb-edu-10b"
     fineweb_edu_100b = "fineweb-edu-100b"
     tinystories = "tinystories"
+
+
+@dataclass
+class CharEncoding:
+    """Character level encoding"""
+
+    stoi: dict
+    itos: dict
+    name: str = "char"
+
+    @property
+    def n_vocab(self):
+        """Voca size"""
+        return len(self.stoi)
+
+    @property
+    def _special_tokens(self):
+        return {"<|endoftext|>": self.n_vocab + 1}
+
+    @classmethod
+    def from_text(cls, text):
+        """Generate encoding from text"""
+        chars = sorted(list(set(text)))
+        stoi = {ch: i for i, ch in enumerate(chars)}
+        itos = {i: ch for i, ch in enumerate(chars)}
+        return cls(stoi=stoi, itos=itos)
+
+    @classmethod
+    def shakespeare(cls):
+        """Create from shakespeare"""
+        with (PATH_DATA / "download/shakespeare/input.txt").open("r") as f:
+            text = f.read()
+
+        return cls.from_text(text)
+
+    def encode_ordinary(self, sequence):
+        """Encode sequence"""
+        return [self.stoi[_] for _ in sequence]
+
+    def decode(self, tokens):
+        """Encode sequence"""
+        return "".join([self.itos[_] for _ in tokens])
 
 
 @dataclass
@@ -93,14 +106,13 @@ def prepocess(document: str):
     return re.sub("\n\n\n+", "\n\n", document).strip()
 
 
-def tokenize(document, encoding=EncodingEnum.gpt2) -> list[jax.Array]:
+def tokenize(encoding, document) -> list[jax.Array]:
     """Tokenize a sequence"""
-    enc = tiktoken.get_encoding(encoding)
-    eot = enc._special_tokens["<|endoftext|>"]
+    eot = encoding._special_tokens["<|endoftext|>"]
 
     tokens = [eot]  # the special <|endoftext|> token delimits all documents
-    tokens.extend(enc.encode_ordinary(document))
-    return jnp.array(tokens).astype(DTYPES[encoding])
+    tokens.extend(encoding.encode_ordinary(document))
+    return jnp.array(tokens).astype(DTYPES[encoding.name])
 
 
 def read_txt_shakespeare(filename) -> list[str]:
@@ -142,12 +154,11 @@ def write_safetensors(tokens, filename, encoding):
     """Write safetensors file"""
     log.info(f"Writing {filename}")
 
-    metadata = {"n-tokens": str(len(tokens)), "encoding": encoding}
+    metadata = {"n-tokens": str(len(tokens)), "encoding": encoding.name}
 
-    n_vocab = tiktoken.get_encoding(config.encoding).n_vocab
     data = {
         "tokens": tokens,
-        "stats": np.bincount(tokens, minlength=n_vocab),
+        "stats": np.bincount(tokens, minlength=encoding.n_vocab),
     }
 
     save_file(data, filename, metadata=metadata)
@@ -219,35 +230,35 @@ def apply(pipeline, filename):
     return reduce(step, pipeline, filename)
 
 
-PIPELINE_STEPS = {
-    (DatasetEnum.shakespeare, EncodingEnum.gpt2): [
-        read_txt_shakespeare,
-        prepocess,
-        tokenize,
-    ],
-    (DatasetEnum.openwebtext, EncodingEnum.gpt2): [
-        read_xz_from_tar,
-        prepocess,
-        tokenize,
-    ],
-    (DatasetEnum.tinystories, EncodingEnum.gpt2): [
-        read_json_tinystories,
-        prepocess,
-        tokenize,
-    ],
+READ_METHODS = {
+    DatasetEnum.shakespeare: read_txt_shakespeare,
+    DatasetEnum.tinystories: read_json_tinystories,
+    DatasetEnum.openwebtext: read_xz_from_tar,
+}
+
+ENCODINGS = {
+    EncodingEnum.gpt2: tiktoken.get_encoding("gpt2"),
+    EncodingEnum.char: CharEncoding.shakespeare(),
 }
 
 
 def prepare(config):
     """Prepare and tokenize data"""
-    pipeline = partial(apply, PIPELINE_STEPS[config.dataset])
+    encoding = ENCODINGS[config.encoding]
+
+    steps = [
+        READ_METHODS[config.dataset],
+        prepocess,
+        partial(tokenize, encoding),
+    ]
+
     filenames = list((PATH_DATA / f"download/{config.dataset}").glob("*.*"))
 
     if config.dataset == DatasetEnum.openwebtext:
         filenames = expand_filenames_openwebtext(filenames)
 
     log.info(f"Found {len(filenames)} files to process.")
-    path = PATH_DATA / "train" / config.dataset
+    path = PATH_DATA / "train" / f"{config.dataset}-{config.encoding}"
     path.mkdir(parents=True, exist_ok=True)
 
     kwargs = dict(
@@ -260,7 +271,9 @@ def prepare(config):
         n_shard, n_tokens_total = 0, 0
         tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
 
-        for result in pool.imap(pipeline, filenames, chunksize=config.chunksize):
+        for result in pool.imap(
+            partial(apply, steps), filenames, chunksize=config.chunksize
+        ):
             # each process returns a list of token sequences, where each toke sequence typically represents
             # a document
             for tokens in result:
@@ -277,9 +290,7 @@ def prepare(config):
                 pbar.update(remainder)
 
                 filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(
-                    tokens_shard, filename=filename, encoding=config.encoding
-                )
+                write_safetensors(tokens_shard, filename=filename, encoding=encoding)
 
                 n_shard += 1
                 n_tokens_total = len(tokens) - remainder
@@ -290,7 +301,7 @@ def prepare(config):
                 write_safetensors(
                     tokens_shard[:n_tokens_total],
                     filename=filename,
-                    encoding=config.encoding,
+                    encoding=encoding,
                 )
 
 
@@ -300,5 +311,5 @@ if __name__ == "__main__":
     if not config.write_summary_only:
         prepare(config)
 
-    path = PATH_DATA / "train" / config.dataset
+    path = PATH_DATA / "train" / f"{config.dataset}-{config.encoding}"
     write_summary(path=path, shards_val_idxs=config.shards_val)
