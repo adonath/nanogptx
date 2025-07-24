@@ -127,18 +127,6 @@ class Embedding:
         )
         return cls(weight=jax.device_put(weight, device))
 
-    @classmethod
-    def from_config(cls, config):
-        """Create an embedding layer from configuration"""
-        return cls.from_n_features(
-            vocab_size=config.vocab_size,
-            n_embd=config.n_embd,
-            rng_key=config.rng_key,
-            init_std=config.init_std,
-            device=config.device_jax,
-            dtype=config.dtype_jax,
-        )
-
     def __call__(self, x):
         return jnp.take(self.weight, x, axis=0)
 
@@ -160,16 +148,6 @@ class LayerNorm:
         weight = jnp.ones((n_dim,), device=device, dtype=dtype)
         bias = jnp.zeros((n_dim,), device=device, dtype=dtype) if use_bias else None
         return cls(weight=weight, bias=bias)
-
-    @classmethod
-    def from_config(cls, config: GPTConfig) -> LayerNorm:
-        """Create a layer normalization layer from configuration"""
-        return cls.from_n_dim(
-            config.n_embd,
-            use_bias=config.use_bias,
-            device=config.device_jax,
-            dtype=config.dtype_jax,
-        )
 
     def __call__(self, x):
         mean = jnp.mean(x, axis=Axis.feature, keepdims=True)
@@ -198,11 +176,6 @@ class Dropout:
             return jnp.where(mask, x / q, 0)
 
         return x
-
-    @classmethod
-    def from_config(cls, config):
-        """Create a dropout layer from configuration"""
-        return cls(rate=config.dropout_rate)
 
 
 @register_dataclass_jax(meta_fields=["approximate"])
@@ -250,19 +223,6 @@ class Linear:
         bias = jnp.zeros(n_out, device=device, dtype=dtype) if use_bias else None
         return cls(weight=jax.device_put(weight, device), bias=bias)
 
-    @classmethod
-    def from_config(cls, config):
-        """Create a linear layer from configuration"""
-        return cls.from_n_features(
-            n_in=config.n_embd,
-            n_out=config.n_embd_mlp,
-            rng_key=config.rng_key,
-            use_bias=config.use_bias,
-            device=config.device_jax,
-            dtype=config.dtype_jax,
-            init_std=config.init_std,
-        )
-
     def __call__(self, x):
         x = jnp.matmul(x, self.weight.mT)
 
@@ -285,22 +245,26 @@ class MLP:
     @classmethod
     def from_config(cls, config):
         """Create an MLP layer from configuration"""
+        kwargs = {
+            "use_bias": config.use_bias,
+            "device": config.device_jax,
+            "dtype": config.dtype_jax,
+        }
+
         c_fc = Linear.from_n_features(
             config.n_embd,
             config.n_embd_mlp,
-            use_bias=config.use_bias,
             rng_key=config.rng_key,
-            device=config.device_jax,
-            dtype=config.dtype_jax,
+            init_std=config.init_std,
+            **kwargs,
         )
+
         c_proj = Linear.from_n_features(
             config.n_embd_mlp,
             config.n_embd,
-            use_bias=config.use_bias,
             rng_key=config.rng_key,
-            device=config.device_jax,
-            dtype=config.dtype_jax,
             init_std=config.init_std_c_proj,
+            **kwargs,
         )
         return cls(
             c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
@@ -333,23 +297,24 @@ class CausalSelfAttention:
     @classmethod
     def from_config(cls, config):
         """Create a causal self-attention layer from configuration"""
+        kwargs = {
+            "use_bias": config.use_bias,
+            "device": config.device_jax,
+            "dtype": config.dtype_jax,
+            "n_in": config.n_embd,
+        }
         return cls(
             c_attn=Linear.from_n_features(
-                config.n_embd,
-                config.n_embd_attn,
+                n_out=config.n_embd_attn,
                 rng_key=config.rng_key,
-                use_bias=config.use_bias,
-                device=config.device_jax,
-                dtype=config.dtype_jax,
+                init_std=config.init_std,
+                **kwargs,
             ),
             c_proj=Linear.from_n_features(
-                config.n_embd,
-                config.n_embd,
+                n_out=config.n_embd,
                 rng_key=config.rng_key,
-                use_bias=config.use_bias,
-                device=config.device_jax,
-                dtype=config.dtype_jax,
                 init_std=config.init_std_c_proj,
+                **kwargs,
             ),
             n_head=config.n_head,
             attn_dropout=Dropout(config.dropout_rate),
@@ -395,10 +360,16 @@ class Block:
     @classmethod
     def from_config(cls, config: GPTConfig) -> Block:
         """Create a block from configuration"""
+        kwargs_norm = {
+            "use_bias": config.use_bias,
+            "device": config.device_jax,
+            "dtype": config.dtype_jax,
+            "n_dim": config.n_embd,
+        }
         return cls(
-            ln_1=LayerNorm.from_config(config),
+            ln_1=LayerNorm.from_n_dim(**kwargs_norm),
             attn=CausalSelfAttention.from_config(config),
-            ln_2=LayerNorm.from_config(config),
+            ln_2=LayerNorm.from_n_dim(**kwargs_norm),
             mlp=MLP.from_config(config),
         )
 
@@ -461,18 +432,33 @@ class GPT:
     @classmethod
     def from_config(cls, config):
         """Create a GPT model from configuration"""
+        kwargs_emb = {
+            "device": config.device_jax,
+            "init_std": config.init_std,
+            "dtype": config.dtype_jax,
+        }
+
         return cls(
-            wte=Embedding.from_config(config),
-            wpe=Embedding.from_n_features(
-                config.block_size,
-                config.n_embd,
+            wte=Embedding.from_n_features(
+                vocab_size=config.vocab_size,
+                n_embd=config.n_embd,
                 rng_key=config.rng_key,
+                **kwargs_emb,
+            ),
+            wpe=Embedding.from_n_features(
+                vocab_size=config.block_size,
+                n_embd=config.n_embd,
+                rng_key=config.rng_key,
+                **kwargs_emb,
+            ),
+            drop=Dropout(config.dropout_rate),
+            h=[Block.from_config(config) for _ in range(config.n_layer)],
+            ln_f=LayerNorm.from_n_dim(
+                n_dim=config.n_embd,
+                use_bias=config.use_bias,
                 device=config.device_jax,
                 dtype=config.dtype_jax,
             ),
-            drop=Dropout.from_config(config),
-            h=[Block.from_config(config) for _ in range(config.n_layer)],
-            ln_f=LayerNorm.from_config(config),
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
