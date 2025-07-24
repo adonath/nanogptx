@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 import jax
-import jax.numpy as jnp
 import numpy as np
 import optax
 import tomli_w
@@ -76,7 +75,7 @@ class TrainingConfig:
     eval_iters: int = 3
     always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
     init_from: InitFrom = InitFrom.scratch
-    dataset: Literal["openwebtext", "shakespeare"] = "openwebtext"
+    dataset: Literal["openwebtext", "shakespeare", "shakespeare-char"] = "openwebtext"
     batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
     show_progress: bool = True # show progress bar
 
@@ -162,6 +161,7 @@ class DatasetLoader:
     dtype: str = "int32"
     filenames: list[str] = field(default_factory=[])
     n_tokens_total: int | None = None
+    vocab_size: int = 10
 
     @classmethod
     def read(cls, path, suffix="train", **kwargs):
@@ -172,9 +172,15 @@ class DatasetLoader:
 
         filenames = [path.parent / _ for _ in data[f"shards-{suffix}"]]
 
-        n_tokens_total = data[f"token-stats-{suffix}"]
+        n_tokens_total = data[f"n-tokens-{suffix}"]
+        vocab_size = len(data[f"token-stats-{suffix}"])
 
-        return cls(filenames=filenames, n_tokens_total=n_tokens_total, **kwargs)
+        return cls(
+            filenames=filenames,
+            n_tokens_total=n_tokens_total,
+            vocab_size=vocab_size,
+            **kwargs,
+        )
 
     @property
     def n_shards(self):
@@ -192,19 +198,14 @@ class DatasetLoader:
             filename = self.filenames[idx_shard]
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 log.info(f"Reading {filename}")
-                spec = {
-                    "device": JAX_DEVICES[self.device],
-                    "dtype": JAX_DTYPES[self.dtype],
-                }
-                data = jnp.asarray(f.get_tensor("tokens"), **spec)
-
+                data = f.get_tensor("tokens")
             # we aim for a statistical coverage here...
             for _ in range(len(data) // (self.batch_size * self.block_size)):
                 max_val = len(data) - self.block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
-                x = jnp.stack([data[i : i + self.block_size] for i in idx_batches])
-                y = jnp.stack(
+                x = np.stack([data[i : i + self.block_size] for i in idx_batches])
+                y = np.stack(
                     [data[i + 1 : i + 1 + self.block_size] for i in idx_batches]
                 )
                 yield Batch(x=x, y=y, idx_shard=idx_shard, idx_batches=idx_batches)
@@ -297,7 +298,7 @@ class GPTTrainer:
 
         with tqdm(total=self.max_iters, disable=not self.show_progress) as pbar:
             for n_iter, batch in zip(range(self.max_iters), data_loader_train):
-                if n_iter % self.eval_interval:
+                if n_iter % self.eval_interval == 0:
                     loss_train = estimate_mean_loss(
                         model, data_loader_train, n_iter=self.eval_iters
                     )
@@ -331,8 +332,6 @@ def get_configs():
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(get_configs())
 
-    model = GPT.from_config(config)
-
     trainer = GPTTrainer.from_config(config)
 
     path_json = PATH_DATA / "train" / config.dataset / "summary-stats.json"
@@ -355,6 +354,9 @@ if __name__ == "__main__":
     )
 
     log.info(f"Val has {data_loader_train.n_tokens_total} tokens.")
+
+    config.vocab_size = data_loader_train.vocab_size
+    model = GPT.from_config(config)
 
     model = trainer.train(
         model=model,
