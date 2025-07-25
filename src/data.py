@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 import lzma
@@ -18,6 +17,7 @@ import tyro
 from jax import numpy as jnp
 from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
+from utils import get_checksum
 
 log = logging.getLogger(__file__)
 
@@ -158,12 +158,12 @@ def write_safetensors(tokens, filename, encoding):
     metadata = {
         "n-tokens": str(len(tokens)),
         "encoding": encoding.name,
-        "checksum": hashlib.md5(tokens.tobytes()).hexdigest(),
+        "checksum": get_checksum(tokens),
     }
 
     data = {
         "tokens": tokens,
-        "stats": np.bincount(tokens, minlength=encoding.n_vocab),
+        "stats": np.bincount(tokens, minlength=encoding.n_vocab).astype(np.uint32),
     }
 
     save_file(data, filename, metadata=metadata)
@@ -175,7 +175,7 @@ def generate_summary(filenames, suffix):
 
     with safe_open(filenames[0], framework="numpy") as f:
         encoding = f.metadata()["encoding"]
-        stats = np.zeros(ENCODINGS[encoding].n_vocab)
+        stats = np.zeros(ENCODINGS[encoding].n_vocab, dtype=np.uint32)
         n_tokens = 0
 
     for filename in filenames:
@@ -185,10 +185,10 @@ def generate_summary(filenames, suffix):
             stats += f.get_tensor("stats")
 
     return {
-        f"n-tokens-{suffix}": n_tokens,
-        f"token-stats-{suffix}": stats.tolist(),
         "encoding": encoding,
+        f"n-tokens-{suffix}": n_tokens,
         f"shards-{suffix}": names,
+        f"token-stats-{suffix}": stats.tolist(),
     }
 
 

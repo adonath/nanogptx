@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import random
@@ -25,6 +26,12 @@ def asdict_str(data):
         data = asdict(data)
 
     return {key: str(value) for key, value in data.items()}
+
+
+def get_checksum(array):
+    """Compute a checksum for an array"""
+    # TODO: replace by a checksum implementation that can be computed on a GPU
+    return hashlib.md5(array.tobytes()).hexdigest()
 
 
 class register_dataclass_jax:

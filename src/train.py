@@ -22,6 +22,7 @@ from utils import (
     AvailableJaxDevices,
     AvailableJaxDtypes,
     asdict_str,
+    get_checksum,
     get_random_name,
 )
 
@@ -78,6 +79,7 @@ class TrainingConfig:
     dataset: Literal["openwebtext", "shakespeare", "shakespeare-char"] = "openwebtext"
     batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
     show_progress: bool = True # show progress bar
+    verify: bool = True # verify tokens via checksum
 
 
 @dataclass(kw_only=True)
@@ -160,8 +162,10 @@ class DatasetLoader:
     seed: int = 78127
     dtype: str = "int32"
     filenames: list[str] = field(default_factory=[])
+    path: str = ""
     n_tokens_total: int | None = None
     vocab_size: int = 10
+    verify: bool = True
 
     @classmethod
     def read(cls, path, suffix="train", **kwargs):
@@ -170,8 +174,7 @@ class DatasetLoader:
         with path.open("r") as f:
             data = json.load(f)
 
-        filenames = [path.parent / _ for _ in data[f"shards-{suffix}"]]
-
+        filenames = data[f"shards-{suffix}"]
         n_tokens_total = data[f"n-tokens-{suffix}"]
         vocab_size = len(data[f"token-stats-{suffix}"])
 
@@ -179,7 +182,20 @@ class DatasetLoader:
             filenames=filenames,
             n_tokens_total=n_tokens_total,
             vocab_size=vocab_size,
+            path=path.parent,
             **kwargs,
+        )
+
+    @classmethod
+    def from_config(cls, path, suffix, config):
+        """Create from config"""
+        return cls.read(
+            path=path,
+            suffix=suffix,
+            block_size=config.block_size,
+            batch_size=config.batch_size,
+            device=config.device,
+            verify=config.verify,
         )
 
     @property
@@ -195,10 +211,16 @@ class DatasetLoader:
             idx_shard = random_state.integers(self.n_shards)
 
             # TODO: load straight to device for zero copy
-            filename = self.filenames[idx_shard]
-            with safe_open(filename, framework="numpy", device="cpu") as f:
+            filename, checksum = self.filenames[idx_shard]
+            with safe_open(self.path / filename, framework="numpy", device="cpu") as f:
                 log.info(f"Reading {filename}")
                 data = f.get_tensor("tokens")
+
+                if self.verify:
+                    assert checksum == get_checksum(
+                        data
+                    ), f"Checksum does not agree for {filename}"
+
             # we aim for a statistical coverage here...
             for _ in range(len(data) // (self.batch_size * self.block_size)):
                 max_val = len(data) - self.block_size
@@ -332,26 +354,21 @@ if __name__ == "__main__":
 
     trainer = GPTTrainer.from_config(config)
 
-    path_json = PATH_DATA / "train" / config.dataset / "summary-stats.json"
-    data_loader_train = DatasetLoader.read(
-        path_json,
-        suffix="train",
-        block_size=config.block_size,
-        batch_size=config.batch_size,
-        device=config.device,
+    path_json = (
+        PATH_DATA
+        / "train"
+        / f"{config.dataset}-{config.encoding}"
+        / "summary-stats.json"
     )
-
-    log.info(f"Train has {data_loader_train.n_tokens_total} tokens.")
-
-    data_loader_validate = DatasetLoader.read(
-        path_json,
-        suffix="val",
-        block_size=config.block_size,
-        batch_size=config.batch_size,
-        device=config.device,
+    data_loader_train = DatasetLoader.from_config(
+        path_json, suffix="train", config=config
     )
+    log.info(f"Training dataset has {data_loader_train.n_tokens_total} tokens.")
 
-    log.info(f"Val has {data_loader_train.n_tokens_total} tokens.")
+    data_loader_validate = DatasetLoader.from_config(
+        path_json, suffix="val", config=config
+    )
+    log.info(f"Validation dataset has {data_loader_train.n_tokens_total} tokens.")
 
     config.vocab_size = data_loader_train.vocab_size
     model = GPT.from_config(config)
