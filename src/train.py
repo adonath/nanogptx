@@ -15,11 +15,8 @@ from safetensors import safe_open
 from tqdm import tqdm
 from utils import (
     JAX_DEVICES,
-    JAX_DTYPES,
     PATH_BASE,
     PATH_DATA,
-    AvailableJaxDevices,
-    AvailableJaxDtypes,
     asdict_str,
     get_checksum,
     get_random_name,
@@ -32,40 +29,10 @@ TAB_WIDTH = 4
 log = logging.getLogger(__file__)
 
 InitFrom = enum.StrEnum(
-    "InitFrom", {_.name: _.value for _ in PretrainedModels} | {"scratch": "scratch"}
+    "InitFrom",
+    {_.name: _.value for _ in PretrainedModels}
+    | {"scratch": "scratch", "resume": "resume"},
 )
-
-
-@dataclass(kw_only=True)
-class GlobalConfig:
-    """GLobal config"""
-
-    seed: int = 9283  # Random seed
-    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
-    dtype: AvailableJaxDtypes = "float32"
-    _key = None
-
-    @property
-    def device_jax(self):
-        """Return actual device"""
-        return JAX_DEVICES[self.device]
-
-    @property
-    def dtype_jax(self):
-        """Return actual device"""
-        return JAX_DTYPES[self.dtype]
-
-    @property
-    def rng_key(self) -> jax.Array:
-        """Generate random key for initialization"""
-        if self._key is None:
-            self._key = jax.random.PRNGKey(self.seed)
-
-        # in general state based key generation is not a good idea in Jax!
-        # however the config class never(!) crosses any jit and function transform
-        # boundaries. So it is safe to use it here.
-        self._key, subkey = jax.random.split(self._key)
-        return subkey
 
 
 # fmt: off
@@ -114,7 +81,7 @@ class OptimizerConfig:
 
 
 @dataclass(kw_only=True)
-class Config(GlobalConfig, TrainingConfig, GPTConfig, WAndBConfig, OptimizerConfig):
+class Config(TrainingConfig, GPTConfig, WAndBConfig, OptimizerConfig):
     """General config"""
 
     @classmethod

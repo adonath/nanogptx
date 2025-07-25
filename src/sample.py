@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from dataclasses import dataclass
 
@@ -6,8 +7,15 @@ import jax
 import jax.numpy as jnp
 import tiktoken
 import tyro
-from model import GPT, PretrainedModels
-from utils import Config, JaxDevicesEnum, JaxDtypesEnum
+from model import GPT
+from safetensors import safe_open
+from train import InitFrom
+from utils import (
+    PATH_DATA,
+    GlobalConfig,
+)
+
+from data import ENCODINGS
 
 PREFIX = "FILE:"
 
@@ -16,24 +24,15 @@ log = logging.getLogger(__file__)
 
 
 @dataclass(kw_only=True)
-class SampleConfig(Config):
+class SampleConfig(GlobalConfig):
     """Sampling configuration"""
 
-    init_from: PretrainedModels = PretrainedModels.gpt2  # Initialization source
-    out_dir: str = "out"  # Output directory (ignored if init_from is not 'resume')
+    init_from: InitFrom = InitFrom.gpt2  # Initialization source
     start: str = "\n"  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
     num_samples: int = 10  # Number of samples to draw
     max_new_tokens: int = 500  # Number of tokens generated in each sample
     temperature: float = 0.8  # Sampling temperature (1.0 = no change, < 1.0 = less random, > 1.0 = more random)
     top_k: int = 200  # Retain only the top_k most likely tokens, clamp others to have 0 probability
-    seed: int = 1337  # Random seed
-    device: JaxDevicesEnum = list(JaxDevicesEnum)[0]  # Device to use
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32  # Data type
-
-    @property
-    def device_jax(self):
-        """JAX device"""
-        return self.device.value
 
     @property
     def prompt(self):
@@ -46,17 +45,25 @@ class SampleConfig(Config):
 
 def sample(config):
     """Sample from a GPT style model"""
-    enc = tiktoken.get_encoding("gpt2")
+    if config.init_from == InitFrom.resume:
+        candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
+        latest = max(candidates, key=os.path.getctime)
+        model = GPT.read(latest, device=config.device, dtype=config.dtype_jax)
 
-    def encode(str_):
-        return enc.encode(str_, allowed_special={"<|endoftext|>"})
+        with safe_open(latest, framework="numpy") as f:
+            metadata = f.metadata()
+            encoding = ENCODINGS[metadata["encoding"]]
+    else:
+        encoding = tiktoken.get_encoding("gpt2")
+        model = GPT.from_pretrained(
+            config.init_from, device=config.device_jax, dtype=config.dtype_jax
+        )
 
-    def decode(str_):
-        return enc.decode(str_)
-
-    x = jnp.array(encode(config.prompt), device=config.device_jax)[None, ...]
-
-    model = GPT.from_pretrained(config.init_from, device=config.device_jax)
+    x = jnp.asarray(
+        encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
+        device=config.device_jax,
+        dtype=config.dtype_jax,
+    )[None, ...]
 
     for _ in range(config.num_samples):
         y = model.generate(
@@ -66,7 +73,7 @@ def sample(config):
             temperature=config.temperature,
             top_k=config.top_k,
         )
-        print(decode(y[0].tolist()))
+        print(encoding.decode(y[0].tolist()))
         print("---------------")
 
 

@@ -15,12 +15,7 @@ from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
-from utils import (
-    PATH_DATA,
-    asdict_str,
-    join_path,
-    register_dataclass_jax,
-)
+from utils import PATH_DATA, GlobalConfig, asdict_str, join_path, register_dataclass_jax
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +50,7 @@ class EmbeddingAxis(int, Enum):
 
 
 @dataclass(kw_only=True)
-class GPTConfig:
+class GPTConfig(GlobalConfig):
     """GPT configuration"""
 
     block_size: int = 1024
@@ -481,7 +476,7 @@ class GPT:
         return n_parameters
 
     @classmethod
-    def from_pretrained(cls, model_type, device=None) -> GPT:
+    def from_pretrained(cls, model_type, device=None, dtype=DEFAULT_DTYPE) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
         path = PATH_DATA / f"models/{model_type.value}/model.safetensors"
@@ -491,10 +486,12 @@ class GPT:
                 f"Model {model_type.value} not available. Download weights using 'download.py' first."
             )
 
-        return cls.read(path, device=device)
+        return cls.read(path, device=device, dtype=dtype)
 
     @classmethod
-    def read(cls, path, transpose_weights=True, device=None) -> GPT:
+    def read(
+        cls, path, transpose_weights=True, device=None, dtype=DEFAULT_DTYPE
+    ) -> GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
         # not nice, but jax does allow generate a PyTree from static definitions
@@ -509,7 +506,7 @@ class GPT:
         data = {}
         with safe_open(path, framework="numpy") as f:
             for k in f.keys():
-                data[k] = jax.device_put(f.get_tensor(k), device=device)
+                data[k] = jax.device_put(f.get_tensor(k).astype(dtype), device=device)
 
         # tied parameters are missing, just creat a reference as placeholder
         data["lm_head.weight"] = data["wte.weight"]

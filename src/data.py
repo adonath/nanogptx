@@ -81,9 +81,13 @@ class CharEncoding:
 
         return cls.from_text(text)
 
-    def encode_ordinary(self, sequence):
+    def encode_ordinary(self, sequence, **kwargs):
         """Encode sequence"""
         return [self.stoi[_] for _ in sequence]
+
+    def encode(self, sequence, **kwargs):
+        """Encode sequence"""
+        return self.encode_ordinary(sequence, **kwargs)
 
     def decode(self, tokens):
         """Encode sequence"""
