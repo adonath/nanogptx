@@ -77,7 +77,7 @@ def sample(config):
             temperature=config.temperature,
             top_k=config.top_k,
         )
-        print(encoding.decode(y[0].tolist()))
+        print(encoding.decode(y[:, 0].tolist()))
         print("---------------")
 
 

@@ -67,7 +67,7 @@ class CharEncoding:
     def from_text(cls, text):
         """Generate encoding from text"""
         chars = sorted(set(text)) + [
-            "---",
+            "\n\n",
         ]  # Add <and of text> character
         stoi = {ch: i for i, ch in enumerate(chars)}
         itos = {i: ch for i, ch in enumerate(chars)}
