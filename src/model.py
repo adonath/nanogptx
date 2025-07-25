@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import partial
 from pathlib import Path
@@ -15,7 +15,7 @@ from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
-from utils import PATH_DATA, GlobalConfig, asdict_str, join_path, register_dataclass_jax
+from utils import PATH_DATA, GlobalConfig, asdict_str, join_path
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class GPTConfig(GlobalConfig):
         )
 
 
-@register_dataclass_jax(data_fields=["weight"])
+@tree_util.register_dataclass
 @dataclass(frozen=True)
 class Embedding:
     """Embedding layer"""
@@ -126,7 +126,7 @@ class Embedding:
         return jnp.take(self.weight, x, axis=0)
 
 
-@register_dataclass_jax(data_fields=["weight", "bias"])
+@tree_util.register_dataclass
 @dataclass(frozen=True)
 class LayerNorm:
     """Layer normalization"""
@@ -156,12 +156,12 @@ class LayerNorm:
         return x
 
 
-@register_dataclass_jax(meta_fields=["rate"])
+@tree_util.register_dataclass
 @dataclass
 class Dropout:
     """Dropout layer"""
 
-    rate: float = 0.1
+    rate: float = field(default=0.1, metadata=dict(static=True))
 
     def __call__(self, x, rng_key, is_training):
         if is_training:
@@ -173,18 +173,18 @@ class Dropout:
         return x
 
 
-@register_dataclass_jax(meta_fields=["approximate"])
+@tree_util.register_dataclass
 @dataclass
 class Gelu:
     """Gaussian Error Linear Unit"""
 
-    approximate: bool = True
+    approximate: bool = field(default=True, metadata=dict(static=True))
 
     def __call__(self, x):
         return jax.nn.gelu(x, approximate=self.approximate)
 
 
-@register_dataclass_jax(data_fields=["weight", "bias"])
+@tree_util.register_dataclass
 @dataclass
 class Linear:
     """Linear layer"""
@@ -227,7 +227,7 @@ class Linear:
         return x
 
 
-@register_dataclass_jax(data_fields=["c_fc", "gelu", "c_proj", "dropout"])
+@tree_util.register_dataclass
 @dataclass(frozen=True)
 class MLP:
     """Multi-layer perceptron"""
@@ -275,11 +275,8 @@ class MLP:
         return x
 
 
-@register_dataclass_jax(
-    data_fields=["c_attn", "c_proj", "attn_dropout", "resid_dropout"],
-    meta_fields=["n_head"],
-)
-@dataclass
+@tree_util.register_dataclass
+@dataclass(frozen=True)
 class CausalSelfAttention:
     """Causal self-attention layer"""
 
@@ -287,7 +284,7 @@ class CausalSelfAttention:
     c_proj: Linear
     attn_dropout: Dropout
     resid_dropout: Dropout
-    n_head: int
+    n_head: int = field(metadata=dict(static=True))
 
     @classmethod
     def from_config(cls, config):
@@ -342,7 +339,7 @@ class CausalSelfAttention:
         return x
 
 
-@register_dataclass_jax(data_fields=["ln_1", "attn", "ln_2", "mlp"])
+@tree_util.register_dataclass
 @dataclass(frozen=True)
 class Block:
     """Self-attention block"""
@@ -374,7 +371,7 @@ class Block:
         return x
 
 
-@register_dataclass_jax(data_fields=["wte", "wpe", "drop", "h", "ln_f", "lm_head"])
+@tree_util.register_dataclass
 @dataclass(frozen=True)
 class GPT:
     """GPT Transformer model"""

@@ -5,7 +5,7 @@ import random
 import string
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Literal
 
 import jax
 import requests
@@ -32,26 +32,6 @@ def get_checksum(array):
     """Compute a checksum for an array"""
     # TODO: replace by a checksum implementation that can be computed on a GPU
     return hashlib.md5(array.tobytes()).hexdigest()
-
-
-class register_dataclass_jax:
-    """Decorator to register a dataclass with JAX."""
-
-    def __init__(
-        self,
-        data_fields: Optional[list] = None,
-        meta_fields: Optional[list] = None,
-    ) -> None:
-        self.data_fields = data_fields or []
-        self.meta_fields = meta_fields or []
-
-    def __call__(self, cls: Any) -> Any:
-        jax.tree_util.register_dataclass(
-            cls,
-            data_fields=self.data_fields,
-            meta_fields=self.meta_fields,
-        )
-        return cls
 
 
 def get_jax_devices():
