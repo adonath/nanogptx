@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import lzma
@@ -154,7 +155,11 @@ def write_safetensors(tokens, filename, encoding):
     """Write safetensors file"""
     log.info(f"Writing {filename}")
 
-    metadata = {"n-tokens": str(len(tokens)), "encoding": encoding.name}
+    metadata = {
+        "n-tokens": str(len(tokens)),
+        "encoding": encoding.name,
+        "checksum": hashlib.md5(tokens.tobytes()).hexdigest(),
+    }
 
     data = {
         "tokens": tokens,
