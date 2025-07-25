@@ -284,12 +284,10 @@ class GPTTrainer:
         @jax.jit
         def train_step(model, opt_state, batch, rng):
             """Training step"""
-            loss, grads = jax.value_and_grad(loss_fn)(
-                model, batch, rng, is_training=True
-            )
+            grads = jax.grad(loss_fn)(model, batch, rng, is_training=True)
             updates, opt_state = self.optimizer.update(grads, opt_state, model)
             params = optax.apply_updates(model, updates)
-            return params, opt_state, loss
+            return params, opt_state
 
         # Initialize optimizer state
         opt_state = self.optimizer.init(model)
@@ -310,7 +308,7 @@ class GPTTrainer:
                     )
 
                 rng, subkey = jax.random.split(rng)
-                model, opt_state, loss = train_step(model, opt_state, batch, subkey)
+                model, opt_state = train_step(model, opt_state, batch, subkey)
                 pbar.update(1)
 
         return model
