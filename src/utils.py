@@ -4,6 +4,7 @@ import logging
 import random
 import string
 from dataclasses import asdict, dataclass, is_dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 
@@ -17,6 +18,10 @@ log = logging.getLogger(__name__)
 TAB_WIDTH = 4
 PATH_BASE = Path(__file__).parent.parent
 PATH_DATA = PATH_BASE / "data"
+KEY_SEP = "."
+
+
+join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
 
 
 def asdict_str(data):
@@ -128,12 +133,6 @@ def assert_shapes_equal(pytree, other_pytree):
         if value.shape != value_other.shape:
             message = f"Shape mismatch at path {join_path(path)}, got {value.shape} and {value_other.shape}"
             raise ValueError(message)
-
-
-def join_path(path):
-    """Join path to Pytree leave"""
-    values = [getattr(_, "name", str(getattr(_, "idx", None))) for _ in path]
-    return ".".join(values)
 
 
 def get_random_name():
