@@ -559,13 +559,15 @@ class GPT:
             else:
                 values, indices = logits, jnp.arange(self.wte.vocab_size)
 
-            probs = jax.nn.softmax(values, axis=-1)
+            probs = jax.nn.softmax(values, axis=Axis.feature)
 
-            next_token = jax.random.choice(
-                jax.random.fold_in(rng_key, idx),
-                indices.flatten(),
-                p=probs.flatten(),
-                shape=(1,),
+            keys = jax.random.split(
+                jax.random.fold_in(rng_key, idx), context.shape[Axis.batch]
+            )
+            next_token = jax.vmap(jax.random.choice)(
+                keys,
+                indices[:, 0, :],
+                p=probs[:, 0, :],
             )
 
             context = context.at[:, idx].set(next_token)
@@ -573,4 +575,4 @@ class GPT:
 
         idxs = jnp.arange(n_tokens, n_tokens + max_new_tokens)
         _, next_tokens = jax.lax.scan(sample, tokens, idxs)
-        return next_tokens
+        return next_tokens.T

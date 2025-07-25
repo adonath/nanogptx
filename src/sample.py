@@ -27,7 +27,9 @@ class SampleConfig(GlobalConfig):
     """Sampling configuration"""
 
     init_from: InitFrom = InitFrom.gpt2  # Initialization source
-    start: str = "\n"  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
+    start: str = (
+        ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
+    )
     num_samples: int = 10  # Number of samples to draw
     max_new_tokens: int = 500  # Number of tokens generated in each sample
     temperature: float = 0.8  # Sampling temperature (1.0 = no change, < 1.0 = less random, > 1.0 = more random)
@@ -69,15 +71,22 @@ def sample(config):
         dtype=DTYPES[encoding.name],
     )[None, ...]
 
-    for _ in range(config.num_samples):
-        y = model.generate(
-            x,
-            max_new_tokens=config.max_new_tokens,
-            rng_key=config.rng_key,
-            temperature=config.temperature,
-            top_k=config.top_k,
-        )
-        print(encoding.decode(y[:, 0].tolist()))
+    # use num_samples as batch size
+    x = jnp.repeat(x, repeats=config.num_samples, axis=0)
+
+    samples = model.generate(
+        x,
+        max_new_tokens=config.max_new_tokens,
+        rng_key=config.rng_key,
+        temperature=config.temperature,
+        top_k=config.top_k,
+    )
+
+    for sample in samples:
+        time.sleep(
+            0.1
+        )  # Sleep that it looks a bit more like the model generating output
+        print(encoding.decode(sample.tolist()))
         print("---------------")
 
 
