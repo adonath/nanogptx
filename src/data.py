@@ -61,12 +61,14 @@ class CharEncoding:
 
     @property
     def _special_tokens(self):
-        return {"<|endoftext|>": self.n_vocab + 1}
+        return {"<|endoftext|>": self.n_vocab - 1}
 
     @classmethod
     def from_text(cls, text):
         """Generate encoding from text"""
-        chars = sorted(list(set(text)))
+        chars = sorted(set(text)) + [
+            "---",
+        ]  # Add <and of text> character
         stoi = {ch: i for i, ch in enumerate(chars)}
         itos = {i: ch for i, ch in enumerate(chars)}
         return cls(stoi=stoi, itos=itos)

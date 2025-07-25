@@ -76,7 +76,8 @@ class TrainingConfig:
     eval_iters: int = 3
     always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
     init_from: InitFrom = InitFrom.scratch
-    dataset: Literal["openwebtext", "shakespeare", "shakespeare-char"] = "openwebtext"
+    dataset: Literal["openwebtext", "shakespeare"] = "openwebtext"
+    encoding: Literal["gpt2", "char"] = "gpt2"
     batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
     show_progress: bool = True # show progress bar
     verify: bool = True # verify tokens via checksum

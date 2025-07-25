@@ -8,7 +8,8 @@ wandb_log = false # override via command line if you like
 wandb_project = 'shakespeare-char'
 wandb_run_name = 'mini-gpt'
 
-dataset = 'shakespeare-char'
+dataset = 'shakespeare'
+encoding = "char"
 gradient_accumulation_steps = 1
 batch_size = 12
 block_size = 64 # context of up to 256 previous characters
