@@ -495,18 +495,18 @@ class GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
         # not nice, but jax does allow generate a PyTree from static definitions
-        dummy_model = GPT.from_config(GPTConfig.dummy())
-
-        paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
-
-        data_model = {join_path(path): value for path, value in paths}
-
         log.info(f"Reading model from {path}")
 
         data = {}
         with safe_open(path, framework="numpy") as f:
             for k in f.keys():
                 data[k] = jax.device_put(f.get_tensor(k).astype(dtype), device=device)
+                n_layer = int(f.metadata().get("n_layer", GPTConfig.n_head))
+                n_head = int(f.metadata().get("n_head", GPTConfig.n_layer))
+
+        dummy_model = GPT.from_config(GPTConfig.dummy(n_layer=n_layer, n_head=n_head))
+        paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
+        data_model = {join_path(path): value for path, value in paths}
 
         # tied parameters are missing, just creat a reference as placeholder
         data["lm_head.weight"] = data["wte.weight"]

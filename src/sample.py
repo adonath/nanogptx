@@ -3,7 +3,6 @@ import os
 import time
 from dataclasses import dataclass
 
-import jax
 import jax.numpy as jnp
 import tiktoken
 import tyro
@@ -15,7 +14,7 @@ from utils import (
     GlobalConfig,
 )
 
-from data import ENCODINGS
+from data import DTYPES, ENCODINGS
 
 PREFIX = "FILE:"
 
@@ -48,7 +47,12 @@ def sample(config):
     if config.init_from == InitFrom.resume:
         candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
         latest = max(candidates, key=os.path.getctime)
-        model = GPT.read(latest, device=config.device, dtype=config.dtype_jax)
+        model = GPT.read(
+            latest,
+            device=config.device_jax,
+            dtype=config.dtype_jax,
+            transpose_weights=False,
+        )
 
         with safe_open(latest, framework="numpy") as f:
             metadata = f.metadata()
@@ -62,14 +66,14 @@ def sample(config):
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
         device=config.device_jax,
-        dtype=config.dtype_jax,
+        dtype=DTYPES[encoding.name],
     )[None, ...]
 
     for _ in range(config.num_samples):
         y = model.generate(
             x,
             max_new_tokens=config.max_new_tokens,
-            rng_key=jax.random.key(config.seed),
+            rng_key=config.rng_key,
             temperature=config.temperature,
             top_k=config.top_k,
         )
