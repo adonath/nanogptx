@@ -3,7 +3,6 @@ import json
 import logging
 from collections import namedtuple
 from dataclasses import asdict, dataclass, field
-from typing import Literal
 
 import jax
 import numpy as np
@@ -25,6 +24,8 @@ from utils import (
     get_checksum,
     get_random_name,
 )
+
+from data import DatasetEnum, EncodingEnum
 
 TAB_WIDTH = 4
 
@@ -76,8 +77,8 @@ class TrainingConfig:
     eval_iters: int = 3
     always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
     init_from: InitFrom = InitFrom.scratch
-    dataset: Literal["openwebtext", "shakespeare"] = "openwebtext"
-    encoding: Literal["gpt2", "char"] = "gpt2"
+    dataset: DatasetEnum = DatasetEnum.openwebtext
+    encoding: EncodingEnum = EncodingEnum.gpt2
     batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
     show_progress: bool = True # show progress bar
     verify: bool = True # verify tokens via checksum
@@ -212,15 +213,17 @@ class DatasetLoader:
             idx_shard = random_state.integers(self.n_shards)
 
             # TODO: load straight to device for zero copy
-            filename, checksum = self.filenames[idx_shard]
+            filename, checksum = (
+                self.filenames[idx_shard]["name"],
+                self.filenames[idx_shard]["checksum"],
+            )
+
             with safe_open(self.path / filename, framework="numpy", device="cpu") as f:
-                log.info(f"Reading {filename}")
+                log.info(f"Reading {self.path / filename}")
                 data = f.get_tensor("tokens")
 
-                if self.verify:
-                    assert checksum == get_checksum(
-                        data
-                    ), f"Checksum does not agree for {filename}"
+                if self.verify and checksum != get_checksum(data):
+                    raise ValueError(f"Checksum does not agree for {filename}")
 
             # we aim for a statistical coverage here...
             for _ in range(len(data) // (self.batch_size * self.block_size)):
