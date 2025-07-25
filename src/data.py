@@ -171,14 +171,16 @@ def write_safetensors(tokens, filename, encoding):
 
 def generate_summary(filenames, suffix):
     """Generate summary for a give set of shards"""
-    for idx, filename in enumerate(filenames):
-        with safe_open(filename, framework="numpy") as f:
-            if idx == 0:
-                stats = f.get_tensor("stats")
-                n_tokens = int(f.metadata()["n-tokens"])
-                encoding = f.metadata()["encoding"]
-                continue
+    names = []
 
+    with safe_open(filenames[0], framework="numpy") as f:
+        encoding = f.metadata()["encoding"]
+        stats = np.zeros(ENCODINGS[encoding].n_vocab)
+        n_tokens = 0
+
+    for filename in filenames:
+        with safe_open(filename, framework="numpy") as f:
+            names.append({"name": filename.name, "checksum": f.metadata()["checksum"]})
             n_tokens += int(f.metadata()["n-tokens"])
             stats += f.get_tensor("stats")
 
@@ -186,6 +188,7 @@ def generate_summary(filenames, suffix):
         f"n-tokens-{suffix}": n_tokens,
         f"token-stats-{suffix}": stats.tolist(),
         "encoding": encoding,
+        f"shards-{suffix}": names,
     }
 
 
@@ -197,11 +200,7 @@ def write_summary(path, shards_val_idxs):
         idx = int(filename.stem.split("_")[-1])
         (shards_train, shards_val)[idx in shards_val_idxs].append(filename)
 
-    data = {
-        "shards-train": [_.name for _ in shards_train],
-        "shards-val": [_.name for _ in shards_val],
-    }
-    data.update(generate_summary(shards_train, suffix="train"))
+    data = generate_summary(shards_train, suffix="train")
     data.update(generate_summary(shards_val, suffix="val"))
 
     filename_json = path / "summary-stats.json"
