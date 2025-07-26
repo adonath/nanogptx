@@ -182,9 +182,8 @@ class DatasetLoader:
 
                 if self.verify and checksum != get_checksum(data):
                     raise ValueError(f"Checksum does not agree for {filename}")
-
             # we aim for a statistical coverage here...
-            for _ in range(len(data) // (self.batch_size * self.block_size)):
+            for _ in range(len(data) // self.batch_size):
                 max_val = len(data) - self.block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
@@ -388,8 +387,8 @@ if __name__ == "__main__":
 
     model = config.training.train(
         model=model,
-        data_loader_train=data_loader_train,
-        data_loader_validate=data_loader_validate,
+        data_loader_train=iter(data_loader_train),
+        data_loader_validate=iter(data_loader_validate),
         rng_key=config.rng_key,
     )
 
