@@ -11,12 +11,16 @@ import tomli_w
 import tomllib
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from tqdm import tqdm
 from utils import (
     JAX_DEVICES,
+    JAX_DTYPES,
     PATH_BASE,
     PATH_DATA,
+    AvailableJaxDevices,
+    AvailableJaxDtypes,
     asdict_str,
     get_checksum,
     get_random_name,
@@ -37,22 +41,7 @@ InitFrom = enum.StrEnum(
 
 
 # fmt: off
-@dataclass(kw_only=True)
-class TrainingConfig:
-    """Training configuration"""
-    log_interval: int = 1
-    eval_interval: int = 2000
-    eval_iters: int = 3
-    always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
-    init_from: InitFrom = InitFrom.scratch
-    dataset: DatasetEnum = DatasetEnum.openwebtext
-    encoding: EncodingEnum = EncodingEnum.gpt2
-    batch_size: int = 12  # if gradient_accumulation_steps > 1, this is the micro-batch size
-    show_progress: bool = True # show progress bar
-    verify: bool = True # verify tokens via checksum
-
-
-@dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True)
 class WAndBConfig:
     """WAndB logging"""
 
@@ -61,7 +50,7 @@ class WAndBConfig:
     wandb_run_name: str = field(default_factory=get_random_name)
 
 
-@dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True)
 class OptimizerConfig:
     """Optimizer config"""
 
@@ -78,40 +67,45 @@ class OptimizerConfig:
     lr_decay_iters: int = 600000  # should be ~= max_iters per Chinchilla
     gradient_accumulation_steps: int = 5 * 8  # used to simulate larger batch sizes
     min_lr: float = 6e-5  # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
+
+    @property
+    def optax(self):
+        """Generate optax optimizer"""
+        lr_scheduler = optax.warmup_cosine_decay_schedule(
+            init_value=0.0,
+            peak_value=self.learning_rate,
+            warmup_steps=self.warmup_iters,
+            decay_steps=self.lr_decay_iters,
+            end_value=self.min_lr,
+        )
+
+        adamw = optax.inject_hyperparams(optax.adamw)(
+            learning_rate=lr_scheduler,
+            b1=self.beta1,
+            b2=self.beta2,
+            weight_decay=self.weight_decay,
+        )
+
+        return optax.chain(
+            optax.clip_by_global_norm(self.grad_clip),
+            adamw,
+            optax.apply_every(self.gradient_accumulation_steps),
+        )
 # fmt: on
 
-
-@dataclass(kw_only=True)
-class Config(TrainingConfig, GPTConfig, WAndBConfig, OptimizerConfig):
-    """General config"""
-
-    @classmethod
-    def read(cls, path: str):
-        """Read configuration from file"""
-        log.info(f"Reading configuration from {path}")
-
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-
-        return cls(**data)
-
-    def write(self, path: str):
-        """Write configuration to file"""
-        log.info(f"Writing configuration to {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with path.open("wb") as f:
-            tomli_w.dump(asdict(self), f)
-
-    def __str__(self):
-        data = {str(self.__class__.__name__): asdict(self)}
-        return tomli_w.dumps(data, indent=TAB_WIDTH)
 
 
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
-@dataclass
+@pydantic_dataclass(kw_only=True)
+class DatasetMeta:
+    """Dataset meta"""
+    n_tokens_total: int = 0
+    vocab_size: int = 10
+
+
+@pydantic_dataclass(kw_only=True)
 class DatasetLoader:
     """Dataset loader
 
@@ -125,16 +119,12 @@ class DatasetLoader:
 
 
     """
-
     batch_size: int = 12
-    device: str = list(JAX_DEVICES)[0]
     block_size: int = 1024
     seed: int = 78127
+    device: str = list(JAX_DEVICES)[0]
     dtype: str = "int32"
-    filenames: list[str] = field(default_factory=[])
     path: str = ""
-    n_tokens_total: int | None = None
-    vocab_size: int = 10
     verify: bool = True
 
     @classmethod
@@ -154,18 +144,6 @@ class DatasetLoader:
             vocab_size=vocab_size,
             path=path.parent,
             **kwargs,
-        )
-
-    @classmethod
-    def from_config(cls, path, suffix, config):
-        """Create from config"""
-        return cls.read(
-            path=path,
-            suffix=suffix,
-            block_size=config.block_size,
-            batch_size=config.batch_size,
-            device=config.device,
-            verify=config.verify,
         )
 
     @property
@@ -205,55 +183,15 @@ class DatasetLoader:
                 yield Batch(x=x, y=y, idx_shard=idx_shard, idx_batches=idx_batches)
 
 
-@dataclass
-class GPTTrainer:
+@pydantic_dataclass(kw_only=True)
+class Trainer:
     """GPT trainer"""
-
-    optimizer: optax.GradientTransformation = field(default=optax.adamw)
-    max_iters: int = 60_000
-    eval_iters: int = 1
-    eval_interval: int = 10
-    seed: int = 71363
-    wandb_log: bool = False
-    show_progress: bool = True
-
-    @classmethod
-    def from_config(cls, config):
-        """Create from config"""
-        warmup_steps = (
-            config.warmup_iters if config.init_from == InitFrom.scratch else 0
-        )
-
-        lr_scheduler = optax.warmup_cosine_decay_schedule(
-            init_value=0.0,
-            peak_value=config.learning_rate,
-            warmup_steps=warmup_steps,
-            decay_steps=config.lr_decay_iters,
-            end_value=config.min_lr,
-        )
-
-        adamw = optax.inject_hyperparams(optax.adamw)(
-            learning_rate=lr_scheduler,
-            b1=config.beta1,
-            b2=config.beta2,
-            weight_decay=config.weight_decay,
-        )
-
-        optimizer = optax.chain(
-            optax.clip_by_global_norm(config.grad_clip),
-            adamw,
-            optax.apply_every(config.gradient_accumulation_steps),
-        )
-
-        return cls(
-            optimizer=optimizer,
-            seed=config.seed,
-            max_iters=config.max_iters,
-            eval_iters=config.eval_iters,
-            eval_interval=config.eval_interval,
-            show_progress=config.show_progress,
-            wandb_log=config.wandb_log,
-        )
+    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    log_interval: int = 1
+    eval_interval: int = 2000
+    eval_iters: int = 3
+    always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
+    show_progress: bool = True # show progress bar
 
     def train(self, model, data_loader_train, data_loader_validate):
         """Train model"""
@@ -281,16 +219,16 @@ class GPTTrainer:
         def train_step(model, opt_state, batch, rng):
             """Training step"""
             grads = jax.grad(loss_fn)(model, batch, rng, is_training=True)
-            updates, opt_state = self.optimizer.update(grads, opt_state, model)
+            updates, opt_state = self.optimizer.optax.update(grads, opt_state, model)
             params = optax.apply_updates(model, updates)
             return params, opt_state
 
         # Initialize optimizer state
-        opt_state = self.optimizer.init(model)
+        opt_state = self.optimizer.optax.init(model)
 
         rng = jax.random.key(self.seed)
 
-        with tqdm(total=self.max_iters, disable=not self.show_progress) as pbar:
+        with tqdm(total=self.optimizer.max_iters, disable=not self.show_progress) as pbar:
             for n_iter, batch in zip(range(self.max_iters), data_loader_train):
                 if n_iter % self.eval_interval == 0:
                     loss_train = estimate_mean_loss(
@@ -320,6 +258,74 @@ class GPTTrainer:
 
         return model
 
+    # 
+    # dataset: DatasetEnum = DatasetEnum.openwebtext
+    # encoding: EncodingEnum = EncodingEnum.gpt2
+
+
+
+@dataclass(kw_only=True)
+class GlobalConfig:
+    """GLobal config"""
+    init_from: InitFrom = InitFrom.scratch
+    seed: int = 9283  # Random seed
+    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
+    dtype: AvailableJaxDtypes = "float32"
+    _key = None
+
+    @property
+    def device_jax(self):
+        """Return actual device"""
+        return JAX_DEVICES[self.device]
+
+    @property
+    def dtype_jax(self):
+        """Return actual device"""
+        return JAX_DTYPES[self.dtype]
+
+    @property
+    def rng_key(self) -> jax.Array:
+        """Generate random key for initialization"""
+        if self._key is None:
+            self._key = jax.random.PRNGKey(self.seed)
+
+        # in general state based key generation is not a good idea in Jax!
+        # however the config class never(!) crosses any jit and function transform
+        # boundaries. So it is safe to use it here.
+        self._key, subkey = jax.random.split(self._key)
+        return subkey
+
+
+@pydantic_dataclass(kw_only=True)
+class Config:
+    """General config"""
+    global_: GlobalConfig = field(default_factory=GlobalConfig)
+    training: Trainer = field(default_factory=Trainer)
+    dataset: DatasetLoader = field(default_factory=DatasetLoader)
+    model: GPTConfig = field(default_factory=GPTConfig)
+    logging: WAndBConfig = field(default_factory=WAndBConfig)
+
+    @classmethod
+    def read(cls, path: str):
+        """Read configuration from file"""
+        log.info(f"Reading configuration from {path}")
+
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+
+        return cls(**data)
+
+    def write(self, path: str):
+        """Write configuration to file"""
+        log.info(f"Writing configuration to {path}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with path.open("wb") as f:
+            tomli_w.dump(asdict(self), f)
+
+    def __str__(self):
+        data = {str(self.__class__.__name__): asdict(self)}
+        return tomli_w.dumps(data, indent=TAB_WIDTH)
 
 def get_configs():
     """Get configs from config folder"""
@@ -337,14 +343,14 @@ def get_configs():
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(get_configs())
 
-    if config.wandb_log:
+    if config.logging.wandb_log:
         run = wandb.init(
             project=config.wandb_project,
             name=config.wandb_run_name,
             config=asdict(config),
         )
 
-    trainer = GPTTrainer.from_config(config)
+    trainer = Trainer.from_config(config)
 
     path_json = (
         PATH_DATA
@@ -362,8 +368,15 @@ if __name__ == "__main__":
     )
     log.info(f"Validation dataset has {data_loader_train.n_tokens_total} tokens.")
 
-    config.vocab_size = data_loader_train.vocab_size
-    model = GPT.from_config(config)
+    spec = {"device": config.global_.device_jax, "dtype": config.global_.device_dtype}
+
+    if config.init_from == InitFrom.scratch:
+        config.vocab_size = data_loader_train.vocab_size
+        model = GPT.from_config(config.model, **spec)
+    elif config.init_from == InitFrom.resume:
+        model = GPT.read(path, **spec)
+    else:
+        model = GPT.from_pretrained(config.init_from, **spec)
 
     model = trainer.train(
         model=model,

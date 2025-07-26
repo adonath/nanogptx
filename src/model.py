@@ -13,6 +13,7 @@ from typing import ClassVar, Optional
 import jax
 from jax import numpy as jnp
 from jax import tree_util
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from safetensors.flax import save_file
 from utils import PATH_DATA, asdict_str, join_path
@@ -49,7 +50,7 @@ class EmbeddingAxis(int, Enum):
     embd = 1
 
 
-@dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True)
 class GPTConfig:
     """GPT configuration"""
 

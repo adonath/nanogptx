@@ -74,38 +74,6 @@ JAX_DTYPES = get_jax_dtypes()
 AvailableJaxDtypes = Literal[tuple(JAX_DTYPES)]
 
 
-@dataclass(kw_only=True)
-class GlobalConfig:
-    """GLobal config"""
-
-    seed: int = 9283  # Random seed
-    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
-    dtype: AvailableJaxDtypes = "float32"
-    _key = None
-
-    @property
-    def device_jax(self):
-        """Return actual device"""
-        return JAX_DEVICES[self.device]
-
-    @property
-    def dtype_jax(self):
-        """Return actual device"""
-        return JAX_DTYPES[self.dtype]
-
-    @property
-    def rng_key(self) -> jax.Array:
-        """Generate random key for initialization"""
-        if self._key is None:
-            self._key = jax.random.PRNGKey(self.seed)
-
-        # in general state based key generation is not a good idea in Jax!
-        # however the config class never(!) crosses any jit and function transform
-        # boundaries. So it is safe to use it here.
-        self._key, subkey = jax.random.split(self._key)
-        return subkey
-
-
 def dot_product_attention_simple(query, key, value, mask=None):
     """Simple scaled dot product attention, can be used with mps"""
     d_k = query.shape[-1]
