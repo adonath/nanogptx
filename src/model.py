@@ -15,7 +15,7 @@ from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
-from utils import PATH_DATA, GlobalConfig, asdict_str, join_path
+from utils import PATH_DATA, asdict_str, join_path
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class EmbeddingAxis(int, Enum):
 
 
 @dataclass(kw_only=True)
-class GPTConfig(GlobalConfig):
+class GPTConfig:
     """GPT configuration"""
 
     block_size: int = 1024
@@ -238,18 +238,15 @@ class MLP:
     dropout: Dropout
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE):
         """Create an MLP layer from configuration"""
-        kwargs = {
-            "use_bias": config.use_bias,
-            "device": config.device_jax,
-            "dtype": config.dtype_jax,
-        }
+        kwargs = {"use_bias": config.use_bias, "device": device, "dtype": dtype}
 
+        keys = iter(jax.random.split(rng_key, 2))
         c_fc = Linear.from_n_features(
             config.n_embd,
             config.n_embd_mlp,
-            rng_key=config.rng_key,
+            rng_key=next(keys),
             init_std=config.init_std,
             **kwargs,
         )
@@ -257,7 +254,7 @@ class MLP:
         c_proj = Linear.from_n_features(
             config.n_embd_mlp,
             config.n_embd,
-            rng_key=config.rng_key,
+            rng_key=next(keys),
             init_std=config.init_std_c_proj,
             **kwargs,
         )
@@ -287,24 +284,25 @@ class CausalSelfAttention:
     n_head: int = field(metadata=dict(static=True))
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE):
         """Create a causal self-attention layer from configuration"""
         kwargs = {
             "use_bias": config.use_bias,
-            "device": config.device_jax,
-            "dtype": config.dtype_jax,
+            "device": device,
+            "dtype": dtype,
             "n_in": config.n_embd,
         }
+        keys = iter(jax.random.split(rng_key, 2))
         return cls(
             c_attn=Linear.from_n_features(
                 n_out=config.n_embd_attn,
-                rng_key=config.rng_key,
+                rng_key=next(keys),
                 init_std=config.init_std,
                 **kwargs,
             ),
             c_proj=Linear.from_n_features(
                 n_out=config.n_embd,
-                rng_key=config.rng_key,
+                rng_key=next(keys),
                 init_std=config.init_std_c_proj,
                 **kwargs,
             ),
@@ -350,19 +348,22 @@ class Block:
     mlp: MLP
 
     @classmethod
-    def from_config(cls, config: GPTConfig) -> Block:
+    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE) -> Block:
         """Create a block from configuration"""
         kwargs_norm = {
             "use_bias": config.use_bias,
-            "device": config.device_jax,
-            "dtype": config.dtype_jax,
+            "device": device,
+            "dtype": dtype,
             "n_dim": config.n_embd,
         }
+        keys = iter(jax.random.split(rng_key, 2))
         return cls(
             ln_1=LayerNorm.from_n_dim(**kwargs_norm),
-            attn=CausalSelfAttention.from_config(config),
+            attn=CausalSelfAttention.from_config(
+                config, rng_key=next(keys), device=device, dtype=dtype
+            ),
             ln_2=LayerNorm.from_n_dim(**kwargs_norm),
-            mlp=MLP.from_config(config),
+            mlp=MLP.from_config(config, rng_key=next(keys), device=device, dtype=dtype),
         )
 
     def __call__(self, x, rng_key, is_training) -> jax.Array:
@@ -422,29 +423,34 @@ class GPT:
         )
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE):
         """Create a GPT model from configuration"""
         kwargs_emb = {
-            "device": config.device_jax,
+            "device": device,
             "init_std": config.init_std,
-            "dtype": config.dtype_jax,
+            "dtype": dtype,
         }
-
+        keys = iter(jax.random.split(rng_key, config.n_layer + 3))
         return cls(
             wte=Embedding.from_n_features(
                 vocab_size=config.vocab_size,
                 n_embd=config.n_embd,
-                rng_key=config.rng_key,
+                rng_key=next(keys),
                 **kwargs_emb,
             ),
             wpe=Embedding.from_n_features(
                 vocab_size=config.block_size,
                 n_embd=config.n_embd,
-                rng_key=config.rng_key,
+                rng_key=next(keys),
                 **kwargs_emb,
             ),
             drop=Dropout(config.dropout_rate),
-            h=[Block.from_config(config) for _ in range(config.n_layer)],
+            h=[
+                Block.from_config(
+                    config, rng_key=next(keys), device=device, dtype=dtype
+                )
+                for _ in range(config.n_layer)
+            ],
             ln_f=LayerNorm.from_n_dim(
                 n_dim=config.n_embd,
                 use_bias=config.use_bias,
@@ -454,7 +460,7 @@ class GPT:
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
-                rng_key=config.rng_key,
+                rng_key=next(keys),
                 use_bias=False,
                 device=config.device_jax,
                 dtype=config.dtype_jax,
