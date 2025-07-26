@@ -471,7 +471,7 @@ class GPT:
     def n_parameters(self, non_embedding=True):
         """Number of parameters"""
         n_parameters = sum(
-            p.size if isinstance(p, jax.Array) else 0 for p in jax.tree_leaves(self)
+            p.size if isinstance(p, jax.Array) else 0 for p in jax.tree.leaves(self)
         )
 
         if non_embedding:

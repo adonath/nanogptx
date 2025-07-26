@@ -170,20 +170,21 @@ class DatasetLoader:
             # choose random shard
             idx_shard = random_state.integers(self.n_shards)
 
-            # TODO: load straight to device for zero copy
             filename, checksum = (
                 self.filenames[idx_shard]["name"],
                 self.filenames[idx_shard]["checksum"],
             )
 
             with safe_open(self.path / filename, framework="numpy", device="cpu") as f:
+                # TODO: load straight to device for zero copy
                 log.info(f"Reading {self.path / filename}")
                 data = f.get_tensor("tokens")
 
                 if self.verify and checksum != get_checksum(data):
                     raise ValueError(f"Checksum does not agree for {filename}")
+
             # we aim for a statistical coverage here...
-            for _ in range(len(data) // self.batch_size):
+            for _ in range(len(data) // (self.batch_size * self.block_size)):
                 max_val = len(data) - self.block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
