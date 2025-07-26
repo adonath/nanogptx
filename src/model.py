@@ -455,16 +455,16 @@ class GPT:
             ln_f=LayerNorm.from_n_dim(
                 n_dim=config.n_embd,
                 use_bias=config.use_bias,
-                device=config.device_jax,
-                dtype=config.dtype_jax,
+                device=device,
+                dtype=dtype,
             ),
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
                 rng_key=next(keys),
                 use_bias=False,
-                device=config.device_jax,
-                dtype=config.dtype_jax,
+                device=device,
+                dtype=dtype,
             ),
         )
 

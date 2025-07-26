@@ -1,8 +1,12 @@
 import enum
 import json
 import logging
+import os
 from collections import namedtuple
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, field, replace
+from functools import cached_property
+from pathlib import Path
+from typing import Literal
 
 import jax
 import numpy as np
@@ -27,7 +31,6 @@ from utils import (
 )
 
 import wandb
-from data import DatasetEnum, EncodingEnum
 
 TAB_WIDTH = 4
 
@@ -98,14 +101,6 @@ Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
 @pydantic_dataclass(kw_only=True)
-class DatasetMeta:
-    """Dataset meta"""
-
-    n_tokens_total: int = 0
-    vocab_size: int = 10
-
-
-@pydantic_dataclass(kw_only=True)
 class DatasetLoader:
     """Dataset loader
 
@@ -122,30 +117,45 @@ class DatasetLoader:
 
     batch_size: int = 12
     block_size: int = 1024
-    seed: int = 78127
-    device: str = list(JAX_DEVICES)[0]
-    dtype: str = "int32"
-    path: str = ""
     verify: bool = True
+    path: Path = PATH_DATA / "train/openwebtext-gpt2"
+    seed: int = 8273
+    dtype: str = "int32"
+    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
+    suffix: Literal["train", "val"] = "train"
 
-    @classmethod
-    def read(cls, path, suffix="train", **kwargs):
-        """Read from json summary file"""
+    @cached_property
+    def _index(self):
+        """Load index file"""
+        if self.path.is_dir():
+            path = self.path / "summary-stats.json"
+        else:
+            path = self.path
 
         with path.open("r") as f:
             data = json.load(f)
 
-        filenames = data[f"shards-{suffix}"]
-        n_tokens_total = data[f"n-tokens-{suffix}"]
-        vocab_size = len(data[f"token-stats-{suffix}"])
+        return data
 
-        return cls(
-            filenames=filenames,
-            n_tokens_total=n_tokens_total,
-            vocab_size=vocab_size,
-            path=path.parent,
-            **kwargs,
-        )
+    @property
+    def n_vocab(self):
+        """Vocab size"""
+        return len(self._index[f"token-stats-{self.suffix}"])
+
+    @property
+    def n_tokens_total(self):
+        """N tokens"""
+        return self._index[f"n-tokens-{self.suffix}"]
+
+    @property
+    def encoding(self):
+        """N tokens"""
+        return self._index["encoding"]
+
+    @property
+    def filenames(self):
+        """Filenames anc checksums"""
+        return self._index[f"shards-{self.suffix}"]
 
     @property
     def n_shards(self):
@@ -197,7 +207,7 @@ class Trainer:
     )
     show_progress: bool = True  # show progress bar
 
-    def train(self, model, data_loader_train, data_loader_validate):
+    def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
 
         def loss_fn(model, batch, rng_key, is_training):
@@ -230,12 +240,12 @@ class Trainer:
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
 
-        rng = jax.random.key(self.seed)
-
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
-            for n_iter, batch in zip(range(self.max_iters), data_loader_train):
+            for n_iter, batch in zip(
+                range(self.optimizer.max_iters), data_loader_train
+            ):
                 if n_iter % self.eval_interval == 0:
                     loss_train = estimate_mean_loss(
                         model, data_loader_train, n_iter=self.eval_iters
@@ -258,25 +268,25 @@ class Trainer:
                             }
                         )
 
-                rng, subkey = jax.random.split(rng)
+                rng_key, subkey = jax.random.split(rng_key)
                 model, opt_state = train_step(model, opt_state, batch, subkey)
                 pbar.update(1)
 
         return model
 
-    #
-    # dataset: DatasetEnum = DatasetEnum.openwebtext
-    # encoding: EncodingEnum = EncodingEnum.gpt2
 
-
-@dataclass(kw_only=True)
-class GlobalConfig:
-    """GLobal config"""
+@pydantic_dataclass(kw_only=True)
+class Config:
+    """General config"""
 
     init_from: InitFrom = InitFrom.scratch
     seed: int = 9283  # Random seed
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
     dtype: AvailableJaxDtypes = "float32"
+    training: Trainer = field(default_factory=Trainer)
+    dataset_train: DatasetLoader = field(default_factory=DatasetLoader)
+    model: GPTConfig = field(default_factory=GPTConfig)
+    logging: WAndBConfig = field(default_factory=WAndBConfig)
     _key = None
 
     @property
@@ -301,16 +311,10 @@ class GlobalConfig:
         self._key, subkey = jax.random.split(self._key)
         return subkey
 
-
-@pydantic_dataclass(kw_only=True)
-class Config:
-    """General config"""
-
-    global_: GlobalConfig = field(default_factory=GlobalConfig)
-    training: Trainer = field(default_factory=Trainer)
-    dataset: DatasetLoader = field(default_factory=DatasetLoader)
-    model: GPTConfig = field(default_factory=GPTConfig)
-    logging: WAndBConfig = field(default_factory=WAndBConfig)
+    @property
+    def dataset_val(self):
+        """Validation dataset"""
+        return replace(self.dataset_train, suffix="val")
 
     @classmethod
     def read(cls, path: str):
@@ -358,38 +362,29 @@ if __name__ == "__main__":
             config=asdict(config),
         )
 
-    trainer = Trainer.from_config(config)
-
-    path_json = (
-        PATH_DATA
-        / "train"
-        / f"{config.dataset}-{config.encoding}"
-        / "summary-stats.json"
-    )
-    data_loader_train = DatasetLoader.from_config(
-        path_json, suffix="train", config=config
-    )
+    data_loader_train = config.dataset_train
     log.info(f"Training dataset has {data_loader_train.n_tokens_total} tokens.")
 
-    data_loader_validate = DatasetLoader.from_config(
-        path_json, suffix="val", config=config
-    )
-    log.info(f"Validation dataset has {data_loader_train.n_tokens_total} tokens.")
+    data_loader_validate = config.dataset_val
+    log.info(f"Validation dataset has {data_loader_validate.n_tokens_total} tokens.")
 
-    spec = {"device": config.global_.device_jax, "dtype": config.global_.device_dtype}
+    spec = {"device": config.device_jax, "dtype": config.dtype_jax}
 
     if config.init_from == InitFrom.scratch:
-        config.vocab_size = data_loader_train.vocab_size
-        model = GPT.from_config(config.model, **spec)
+        config.model.vocab_size = data_loader_train.n_vocab
+        model = GPT.from_config(config.model, rng_key=config.rng_key, **spec)
     elif config.init_from == InitFrom.resume:
-        model = GPT.read(path, **spec)
+        candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
+        latest = max(candidates, key=os.path.getctime)
+        model = GPT.read(latest, **spec)
     else:
         model = GPT.from_pretrained(config.init_from, **spec)
 
-    model = trainer.train(
+    model = config.training.train(
         model=model,
         data_loader_train=data_loader_train,
         data_loader_validate=data_loader_validate,
+        rng_key=config.rng_key,
     )
 
     filename = (
