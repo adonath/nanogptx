@@ -289,7 +289,7 @@ class Config:
     dataset_train: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
-    _key = None
+    _key: int = None
 
     def __post_init__(self):
         # sync arguments after init

@@ -403,6 +403,10 @@ class GPT:
             x = block(x, rng_key=sub_rng_key, is_training=is_training)
 
         x = self.ln_f(x)
+
+        if not is_training:
+            return self.lm_head(x[:, [-1], :])
+
         logits = self.lm_head(x)
         return logits
 
@@ -508,7 +512,10 @@ class GPT:
                 n_layer = int(f.metadata().get("n_layer", GPTConfig.n_head))
                 n_head = int(f.metadata().get("n_head", GPTConfig.n_layer))
 
-        dummy_model = GPT.from_config(GPTConfig.dummy(n_layer=n_layer, n_head=n_head))
+        dummy_model = GPT.from_config(
+            GPTConfig.dummy(n_layer=n_layer, n_head=n_head),
+            rng_key=jax.random.key(8723),
+        )
         paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
         data_model = {join_path(path): value for path, value in paths}
 
