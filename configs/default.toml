@@ -1,14 +1,17 @@
-#[training]
+[global_]
+init_from = "scratch"
+seed = 9283
+device = "TFRT_CPU_0"
+dtype = "float32"
+
+[training]
 log_interval = 1
 eval_interval = 2000
 eval_iters = 3
 always_save_checkpoint = true
-init_from = "scratch"
-dataset = "openwebtext"
-batch_size = 12
 show_progress = true
 
-#[optimizer]
+[training.optimizer]
 learning_rate = 0.0006
 max_iters = 600000
 weight_decay = 0.1
@@ -21,7 +24,16 @@ lr_decay_iters = 600000
 gradient_accumulation_steps = 40
 min_lr = 6e-05
 
-#[model]
+[dataset]
+batch_size = 12
+block_size = 1024
+seed = 78127
+device = "TFRT_CPU_0"
+dtype = "int32"
+path = ""
+verify = true
+
+[model]
 block_size = 1024
 vocab_size = 50304
 n_layer = 12
@@ -31,6 +43,7 @@ dropout_rate = 0.0
 use_bias = true
 init_std = 0.02
 
-#[logging]
+[logging]
 wandb_log = false
-wandb_project = "owt"
+wandb_project = "nanogptx"
+wandb_run_name = "mellifluous-man"

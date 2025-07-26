@@ -94,13 +94,13 @@ class OptimizerConfig:
 # fmt: on
 
 
-
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
 @pydantic_dataclass(kw_only=True)
 class DatasetMeta:
     """Dataset meta"""
+
     n_tokens_total: int = 0
     vocab_size: int = 10
 
@@ -119,6 +119,7 @@ class DatasetLoader:
 
 
     """
+
     batch_size: int = 12
     block_size: int = 1024
     seed: int = 78127
@@ -186,12 +187,15 @@ class DatasetLoader:
 @pydantic_dataclass(kw_only=True)
 class Trainer:
     """GPT trainer"""
+
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     log_interval: int = 1
     eval_interval: int = 2000
     eval_iters: int = 3
-    always_save_checkpoint: bool = True  # if True, always save a checkpoint after each evals
-    show_progress: bool = True # show progress bar
+    always_save_checkpoint: bool = (
+        True  # if True, always save a checkpoint after each evals
+    )
+    show_progress: bool = True  # show progress bar
 
     def train(self, model, data_loader_train, data_loader_validate):
         """Train model"""
@@ -228,7 +232,9 @@ class Trainer:
 
         rng = jax.random.key(self.seed)
 
-        with tqdm(total=self.optimizer.max_iters, disable=not self.show_progress) as pbar:
+        with tqdm(
+            total=self.optimizer.max_iters, disable=not self.show_progress
+        ) as pbar:
             for n_iter, batch in zip(range(self.max_iters), data_loader_train):
                 if n_iter % self.eval_interval == 0:
                     loss_train = estimate_mean_loss(
@@ -258,15 +264,15 @@ class Trainer:
 
         return model
 
-    # 
+    #
     # dataset: DatasetEnum = DatasetEnum.openwebtext
     # encoding: EncodingEnum = EncodingEnum.gpt2
-
 
 
 @dataclass(kw_only=True)
 class GlobalConfig:
     """GLobal config"""
+
     init_from: InitFrom = InitFrom.scratch
     seed: int = 9283  # Random seed
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
@@ -299,6 +305,7 @@ class GlobalConfig:
 @pydantic_dataclass(kw_only=True)
 class Config:
     """General config"""
+
     global_: GlobalConfig = field(default_factory=GlobalConfig)
     training: Trainer = field(default_factory=Trainer)
     dataset: DatasetLoader = field(default_factory=DatasetLoader)
@@ -326,6 +333,7 @@ class Config:
     def __str__(self):
         data = {str(self.__class__.__name__): asdict(self)}
         return tomli_w.dumps(data, indent=TAB_WIDTH)
+
 
 def get_configs():
     """Get configs from config folder"""

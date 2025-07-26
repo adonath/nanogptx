@@ -21,6 +21,7 @@ tqdm = ">=4.67.1,<5"
 wandb = ">=0.20.0,<0.22"
 tyro = ">=0.9.26,<0.10"
 optax = ">=0.2.4,<0.3"
+pydantic = ">=2.11.7,<3"
 
 [pypi-dependencies]
 tomli-w = ">=1.2.0, <2"
