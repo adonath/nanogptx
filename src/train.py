@@ -10,6 +10,7 @@ import optax
 import tomli_w
 import tomllib
 import tyro
+import wandb
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
 from tqdm import tqdm
@@ -213,6 +214,7 @@ class GPTTrainer:
     eval_iters: int = 1
     eval_interval: int = 10
     seed: int = 71363
+    wandb_log: bool = False
     show_progress: bool = True
 
     @classmethod
@@ -250,6 +252,7 @@ class GPTTrainer:
             eval_iters=config.eval_iters,
             eval_interval=config.eval_interval,
             show_progress=config.show_progress,
+            wandb_log=config.wandb_log,
         )
 
     def train(self, model, data_loader_train, data_loader_validate):
@@ -296,9 +299,19 @@ class GPTTrainer:
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
                     )
+                    lr = opt_state[1].hyperparams["learning_rate"]
                     pbar.set_postfix_str(
-                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f},"
+                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}"
                     )
+                    if self.wandb_log:
+                        wandb.log(
+                            {
+                                "iter": n_iter,
+                                "loss-train": loss_train,
+                                "loss-val": loss_val,
+                                "lr": lr,
+                            }
+                        )
 
                 rng, subkey = jax.random.split(rng)
                 model, opt_state = train_step(model, opt_state, batch, subkey)
@@ -322,6 +335,13 @@ def get_configs():
 
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(get_configs())
+
+    if config.wandb_log:
+        run = wandb.init(
+            project=config.wand_project,
+            name=config.wandb_run_name,
+            config=asdict(config),
+        )
 
     trainer = GPTTrainer.from_config(config)
 
