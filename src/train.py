@@ -10,7 +10,6 @@ import optax
 import tomli_w
 import tomllib
 import tyro
-import wandb
 from model import GPT, GPTConfig, PretrainedModels
 from safetensors import safe_open
 from tqdm import tqdm
@@ -23,6 +22,7 @@ from utils import (
     get_random_name,
 )
 
+import wandb
 from data import DatasetEnum, EncodingEnum
 
 TAB_WIDTH = 4
@@ -310,6 +310,7 @@ class GPTTrainer:
                                 "loss-train": loss_train,
                                 "loss-val": loss_val,
                                 "lr": lr,
+                                "shard": batch.shard_idx,
                             }
                         )
 
@@ -338,7 +339,7 @@ if __name__ == "__main__":
 
     if config.wandb_log:
         run = wandb.init(
-            project=config.wand_project,
+            project=config.wandb_project,
             name=config.wandb_run_name,
             config=asdict(config),
         )

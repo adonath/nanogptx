@@ -10,6 +10,7 @@ version = "0.1.0"
 [activation.env]
 JAX_TRACEBACK_FILTERING="off"
 JAX_COMPILATION_CACHE_DIR=".jax_cache"
+WANDB_API_KEY = "$WANDB_API_KEY"
 
 [dependencies]
 safetensors = ">=0.5.3,<0.6"
