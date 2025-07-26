@@ -4,7 +4,7 @@ eval_iters = 1
 dataset = "shakespeare"
 batch_size = 8
 
-[optimizer]
+[training.optimizer]
 max_iters = 100
 
 [model]

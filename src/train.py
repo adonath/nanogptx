@@ -5,7 +5,6 @@ import os
 from collections import namedtuple
 from dataclasses import asdict, field, replace
 from functools import cached_property
-from pathlib import Path
 from typing import Literal
 
 import jax
@@ -15,6 +14,7 @@ import tomli_w
 import tomllib
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
+from pydantic import ConfigDict, DirectoryPath, FilePath
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from tqdm import tqdm
@@ -35,6 +35,7 @@ import wandb
 TAB_WIDTH = 4
 
 log = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 InitFrom = enum.StrEnum(
     "InitFrom",
@@ -118,7 +119,7 @@ class DatasetLoader:
     batch_size: int = 12
     block_size: int = 1024
     verify: bool = True
-    path: Path = PATH_DATA / "train/openwebtext-gpt2"
+    path: FilePath | DirectoryPath = PATH_DATA / "train/openwebtext-gpt2"
     seed: int = 8273
     dtype: str = "int32"
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
@@ -206,6 +207,7 @@ class Trainer:
         True  # if True, always save a checkpoint after each evals
     )
     show_progress: bool = True  # show progress bar
+    wandb_log: bool = False
 
     def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
@@ -275,7 +277,7 @@ class Trainer:
         return model
 
 
-@pydantic_dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
 class Config:
     """General config"""
 
@@ -288,6 +290,10 @@ class Config:
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
     _key = None
+
+    def __post_init__(self):
+        # sync arguments after init
+        self.training.wandb_log = self.logging.wandb_log
 
     @property
     def device_jax(self):
@@ -347,7 +353,7 @@ def get_configs():
 
     # TODO: parse desription from the first line of the toml file
     for filename in filenames:
-        configs[filename.stem] = (filename.name, Config.read(filename))
+        configs[filename.stem] = (filename.stem, Config.read(filename))
 
     return configs
 

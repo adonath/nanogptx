@@ -1,4 +1,3 @@
-[global_]
 init_from = "scratch"
 seed = 9283
 device = "TFRT_CPU_0"
@@ -24,14 +23,15 @@ lr_decay_iters = 600000
 gradient_accumulation_steps = 40
 min_lr = 6e-05
 
-[dataset]
+[dataset_train]
 batch_size = 12
 block_size = 1024
-seed = 78127
-device = "TFRT_CPU_0"
-dtype = "int32"
-path = ""
 verify = true
+path = "/Users/adonath/github/adonath/from-scratch-in-jax-nano-gpt/data/train/openwebtext-gpt2"
+seed = 8273
+dtype = "int32"
+device = "TFRT_CPU_0"
+suffix = "train"
 
 [model]
 block_size = 1024
@@ -46,4 +46,4 @@ init_std = 0.02
 [logging]
 wandb_log = false
 wandb_project = "nanogptx"
-wandb_run_name = "mellifluous-man"
+wandb_run_name = "poetic-panda"
