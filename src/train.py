@@ -184,7 +184,7 @@ class DatasetLoader:
                     raise ValueError(f"Checksum does not agree for {filename}")
 
             # we aim for a statistical coverage here...
-            for _ in range(len(data) // (self.batch_size * self.block_size)):
+            for _ in range(len(data) // self.batch_size):
                 max_val = len(data) - self.block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
@@ -289,11 +289,12 @@ class Config:
     dataset_train: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
-    _key: int = None
+    _key = None
 
     def __post_init__(self):
         # sync arguments after init
         self.training.wandb_log = self.logging.wandb_log
+        self.dataset_train.block_size = self.model.block_size
 
     @property
     def device_jax(self):

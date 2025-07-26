@@ -30,7 +30,7 @@ path = "/Users/adonath/github/adonath/from-scratch-in-jax-nano-gpt/data/train/sh
 block_size = 64 # context of up to 256 previous characters
 n_layer = 4
 n_head = 4
-n_embd = 128
+n_embd = 64
 dropout_rate = 0.1
 
 [logging]
