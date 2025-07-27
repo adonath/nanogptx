@@ -21,8 +21,10 @@ from utils import PATH_DATA, asdict_str, join_path
 log = logging.getLogger(__name__)
 
 PATH = Path(__file__).parent
+DEFAULT_INIT_STD = 0.02
 DEFAULT_DTYPE = jnp.float32
-INIT_STD = 0.02
+DEFAULT_RNG_KEY = jax.random.key(98238)
+DEFAULT_DEVICE = None
 
 
 class PretrainedModels(str, Enum):
@@ -61,7 +63,7 @@ class GPTConfig:
     n_embd: int = 768
     dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
     use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
-    init_std: float = INIT_STD
+    init_std: float = DEFAULT_INIT_STD
 
     @property
     def n_embd_mlp(self) -> int:
@@ -112,10 +114,10 @@ class Embedding:
         cls,
         vocab_size: int,
         n_embd: int,
-        rng_key: jax.Array,
-        device=None,
+        rng_key=DEFAULT_RNG_KEY,
+        device=DEFAULT_DEVICE,
         dtype=DEFAULT_DTYPE,
-        init_std=INIT_STD,
+        init_std=DEFAULT_INIT_STD,
     ):
         """Create an embedding layer from number of features"""
         weight = init_std * jax.random.normal(
@@ -138,7 +140,11 @@ class LayerNorm:
 
     @classmethod
     def from_n_dim(
-        cls, n_dim: int, use_bias: bool = True, device=None, dtype=DEFAULT_DTYPE
+        cls,
+        n_dim: int,
+        use_bias: bool = True,
+        device=DEFAULT_DEVICE,
+        dtype=DEFAULT_DTYPE,
     ):
         """Create a layer normalization layer from number of features"""
         weight = jnp.ones((n_dim,), device=device, dtype=dtype)
@@ -210,9 +216,9 @@ class Linear:
         n_out: int,
         rng_key: jax.Array,
         use_bias: bool = True,
-        device=None,
+        device=DEFAULT_DEVICE,
         dtype=DEFAULT_DTYPE,
-        init_std=INIT_STD,
+        init_std=DEFAULT_INIT_STD,
     ):
         """Create a linear layer from number of features"""
         weight = init_std * jax.random.normal(rng_key, (n_out, n_in), dtype=dtype)
@@ -239,7 +245,9 @@ class MLP:
     dropout: Dropout
 
     @classmethod
-    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE):
+    def from_config(
+        cls, config, rng_key=DEFAULT_RNG_KEY, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
+    ):
         """Create an MLP layer from configuration"""
         kwargs = {"use_bias": config.use_bias, "device": device, "dtype": dtype}
 
@@ -285,7 +293,7 @@ class CausalSelfAttention:
     n_head: int = field(metadata=dict(static=True))
 
     @classmethod
-    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE):
+    def from_config(cls, config, rng_key, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
         """Create a causal self-attention layer from configuration"""
         kwargs = {
             "use_bias": config.use_bias,
@@ -349,7 +357,9 @@ class Block:
     mlp: MLP
 
     @classmethod
-    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE) -> Block:
+    def from_config(
+        cls, config, rng_key, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
+    ) -> Block:
         """Create a block from configuration"""
         kwargs_norm = {
             "use_bias": config.use_bias,
@@ -428,7 +438,9 @@ class GPT:
         )
 
     @classmethod
-    def from_config(cls, config, rng_key, device=None, dtype=DEFAULT_DTYPE):
+    def from_config(
+        cls, config, rng_key=DEFAULT_RNG_KEY, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
+    ):
         """Create a GPT model from configuration"""
         kwargs_emb = {
             "device": device,
@@ -484,7 +496,9 @@ class GPT:
         return n_parameters
 
     @classmethod
-    def from_pretrained(cls, model_type, device=None, dtype=DEFAULT_DTYPE) -> GPT:
+    def from_pretrained(
+        cls, model_type, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
+    ) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
         path = PATH_DATA / f"models/{model_type.value}/model.safetensors"
@@ -498,7 +512,7 @@ class GPT:
 
     @classmethod
     def read(
-        cls, path, transpose_weights=True, device=None, dtype=DEFAULT_DTYPE
+        cls, path, transpose_weights=True, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
     ) -> GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
@@ -514,7 +528,6 @@ class GPT:
 
         dummy_model = GPT.from_config(
             GPTConfig.dummy(n_layer=n_layer, n_head=n_head),
-            rng_key=jax.random.key(8723),
         )
         paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
         data_model = {join_path(path): value for path, value in paths}
