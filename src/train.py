@@ -56,7 +56,7 @@ class WAndBConfig:
 
 @pydantic_dataclass(kw_only=True)
 class OptimizerConfig:
-    """Optimizer config"""
+    """Optimizer configuration"""
 
     learning_rate: float = 6e-4  # max learning rate
     max_iters: int = 600000  # total number of training iterations
@@ -103,18 +103,7 @@ Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 @pydantic_dataclass(kw_only=True)
 class DatasetLoader:
-    """Dataset loader
-
-    This dataset load supports array sharding for SPMD parallelism.
-
-
-    To be used as:
-
-    for batch in loader:
-        x, y = batch.x, batch.y
-
-
-    """
+    """Dataset loading"""
 
     batch_size: int = 12
     block_size: int = 1024
@@ -197,7 +186,7 @@ class DatasetLoader:
 
 @pydantic_dataclass(kw_only=True)
 class Trainer:
-    """GPT trainer"""
+    """Training configuration"""
 
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     log_interval: int = 1
@@ -286,7 +275,7 @@ class Config:
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
     dtype: AvailableJaxDtypes = "float32"
     training: Trainer = field(default_factory=Trainer)
-    dataset_train: DatasetLoader = field(default_factory=DatasetLoader)
+    data: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
     _key = None
@@ -319,9 +308,9 @@ class Config:
         return subkey
 
     @property
-    def dataset_val(self):
+    def data_val(self):
         """Validation dataset"""
-        return replace(self.dataset_train, suffix="val")
+        return replace(self.data, suffix="val")
 
     @classmethod
     def read(cls, path: str):
@@ -354,7 +343,10 @@ def get_configs():
 
     # TODO: parse desription from the first line of the toml file
     for filename in filenames:
-        configs[filename.stem] = (filename.stem, Config.read(filename))
+        configs[filename.stem] = (
+            f"Default configuration from {filename.name}",
+            Config.read(filename),
+        )
 
     return configs
 

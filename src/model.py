@@ -52,7 +52,7 @@ class EmbeddingAxis(int, Enum):
 
 @pydantic_dataclass(kw_only=True)
 class GPTConfig:
-    """GPT configuration"""
+    """Model configuration"""
 
     block_size: int = 1024
     vocab_size: int = 50304
