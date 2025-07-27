@@ -21,9 +21,8 @@ min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 warmup_iters = 100 # not super necessary potentially
 
-[dataset_train]
+[data]
 batch_size = 12
-block_size = 1024
 path = "/Users/adonath/github/adonath/from-scratch-in-jax-nano-gpt/data/train/shakespeare-char"
 
 [model]

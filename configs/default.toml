@@ -23,7 +23,7 @@ lr_decay_iters = 600000
 gradient_accumulation_steps = 40
 min_lr = 6e-05
 
-[dataset_train]
+[data]
 batch_size = 12
 block_size = 1024
 verify = true
