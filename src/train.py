@@ -126,7 +126,7 @@ class DatasetLoader:
     def __post_init__(self):
         if self._index["encoding"] != self.encoding:
             message = f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
-            raise ValidationError(message)
+            raise ValueError(message)
 
     @property
     def path(self):
@@ -135,7 +135,7 @@ class DatasetLoader:
 
         if not path.exists():
             message = f"Training data '{self.dataset}' with encoding '{self.encoding}' not available."
-            raise ValidationError(message)
+            raise ValueError(message)
 
         return path
 
@@ -393,8 +393,8 @@ def get_configs():
                 f"Default configuration from {filename.name}",
                 Config.read(filename),
             )
-        except ValidationError as e:
-            log.warning(f"Invalid configuration in {filename}, {repr(e)}")
+        except (ValidationError, ValueError) as e:
+            log.warning(f"Invalid default configuration in {filename}, {repr(e)}")
 
     return configs
 
