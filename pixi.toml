@@ -27,11 +27,11 @@ pydantic = ">=2.11.7,<3"
 tomli-w = ">=1.2.0, <2"
 clouseau = { git = "https://github.com/adonath/clouseau.git", branch = "main" }
 
-[system-requirements]
-cuda = "12"
-
 [feature.cpu.dependencies]
 jax = ">=0.5.0,<0.7"
+
+[feature.gpu.system-requirements]
+cuda = "12"
 
 [feature.gpu.activation.env]
 JAX_DEFAULT_MATMUL_PRECISION="float32"
