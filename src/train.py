@@ -123,11 +123,6 @@ class DatasetLoader:
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
     suffix: Literal["train", "val"] = "train"
 
-    def __post_init__(self):
-        if self._index["encoding"] != self.encoding:
-            message = f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
-            raise ValueError(message)
-
     @property
     def path(self):
         """Data path"""
