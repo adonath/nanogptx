@@ -16,7 +16,7 @@ from jax import tree_util
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from safetensors.flax import save_file
-from utils import PATH_DATA, asdict_str, join_path
+from utils import PATH_DATA, asdict_str, flatten_pytree_with_path, join_path
 
 log = logging.getLogger(__name__)
 
@@ -543,7 +543,11 @@ class GPT:
         ]
 
         for key in data_model:
-            data_model[key] = data.get(key)
+            array = data.get(key)
+            if array is None:
+                log.warning(f"No tensor found for {key}, setting to `None`")
+
+            data_model[key] = array
 
             if any(key.endswith(_) for _ in transposed) and transpose_weights:
                 data_model[key] = data_model[key].T
@@ -552,16 +556,13 @@ class GPT:
 
     def write(self, path, metadata=None):
         """Write model to safetensors file"""
-        paths, _ = tree_util.tree_flatten_with_path(self)
-        data = {join_path(path): value for path, value in paths}
+        data = flatten_pytree_with_path(self)
 
-        metadata_model = asdict_str(self.to_config())
-
-        if metadata:
-            metadata_model.update(metadata)
+        if metadata is None:
+            metadata = asdict_str(self.to_config())
 
         log.info(f"Writing model to {path}")
-        save_file(data, path, metadata=metadata_model)
+        save_file(data, path, metadata=metadata)
 
     def generate(self, tokens, max_new_tokens, rng_key, temperature=1.0, top_k=None):
         """Generate new tokens"""
