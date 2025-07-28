@@ -283,6 +283,7 @@ class Trainer:
 class Config:
     """General config"""
 
+    # TODO: add name and project?
     init_from: InitFrom = InitFrom.scratch
     seed: int = 9283  # Random seed
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
@@ -400,7 +401,9 @@ if __name__ == "__main__":
     )
 
     filename = (
-        PATH_DATA / "checkpoints" / f"model-{config.wandb_run_name}-final.safetensors"
+        PATH_DATA
+        / "checkpoints"
+        / f"model-{config.logging.wandb_run_name}-final.safetensors"
     )
 
     filename.parent.mkdir(parents=True, exist_ok=True)
