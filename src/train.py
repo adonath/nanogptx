@@ -234,7 +234,7 @@ class Trainer:
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
                 # the key can be ignored here, because dropout is skipped
-                losses.append(loss_fn(model, batch, rng_key=rng_key, is_training=False))
+                losses.append(loss_fn(model, batch, rng_key=rng_key, is_training=True))
 
             return np.mean(losses)
 
