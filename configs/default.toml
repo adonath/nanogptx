@@ -9,6 +9,7 @@ eval_interval = 2000
 eval_iters = 3
 always_save_checkpoint = true
 show_progress = true
+wandb_log = false
 
 [training.optimizer]
 learning_rate = 0.0006
@@ -27,7 +28,8 @@ min_lr = 6e-05
 batch_size = 12
 block_size = 1024
 verify = true
-path = "/Users/adonath/github/adonath/from-scratch-in-jax-nano-gpt/data/train/openwebtext-gpt2"
+dataset = "openwebtext"
+encoding = "gpt2"
 seed = 8273
 dtype = "int32"
 device = "TFRT_CPU_0"
@@ -46,4 +48,4 @@ init_std = 0.02
 [logging]
 wandb_log = false
 wandb_project = "nanogptx"
-wandb_run_name = "poetic-panda"
+wandb_run_name = "nocturnal-naiad"

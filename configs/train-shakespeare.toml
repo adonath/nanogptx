@@ -1,8 +1,10 @@
 [training]
 eval_interval = 2000
 eval_iters = 1
-dataset = "shakespeare"
+
+[data]
 batch_size = 8
+dataset = "shakespeare"
 
 [training.optimizer]
 max_iters = 100
