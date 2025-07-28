@@ -30,11 +30,6 @@ def flatten_pytree_with_path(data):
     return {join_path(path): value for path, value in values}
 
 
-def unflatten_dict(data):
-    """Unflatten a dict"""
-    ...
-
-
 def asdict_str(data):
     """Return a dict with str values"""
 

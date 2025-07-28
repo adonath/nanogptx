@@ -26,8 +26,10 @@ from utils import (
     AvailableJaxDevices,
     AvailableJaxDtypes,
     asdict_str,
+    flatten_pytree_with_path,
     get_checksum,
     get_random_name,
+    join_path,
 )
 
 import wandb
@@ -339,10 +341,32 @@ class Config:
         """Read configuration from file"""
         log.info(f"Reading configuration from {path}")
 
-        with open(path, "rb") as f:
+        if path.suffix == ".safetensors":
+            with safe_open(path, framework="numpy") as f:
+                return cls.from_safetensors_meta(f.metadata())
+
+        with path.open("rb") as f:
             data = tomllib.load(f)
 
         return cls(**data)
+
+    @classmethod
+    def from_safetensors_meta(cls, data):
+        """Re-create config from safetensors meta"""
+        values_and_path, treedef = jax.tree.flatten_with_path(asdict(cls()))
+
+        # safetensors does no preserve the order of the entries...
+        values = []
+        for path, _ in values_and_path:
+            values.append(data[join_path(path)])
+
+        data = jax.tree.unflatten(treedef, values)
+        return cls(**data)
+
+    def to_safetensors_meta(self):
+        """Create safetensors meta"""
+        data = flatten_pytree_with_path(asdict(self))
+        return asdict_str(data)
 
     def write(self, path: str):
         """Write configuration to file"""
@@ -416,4 +440,4 @@ if __name__ == "__main__":
     )
 
     filename.parent.mkdir(parents=True, exist_ok=True)
-    model.write(filename, metadata=asdict_str(config))
+    model.write(filename, metadata=config.to_safetensors_meta())

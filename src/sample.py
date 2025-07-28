@@ -87,16 +87,15 @@ def sample(config):
         )
 
         with safe_open(latest, framework="numpy") as f:
-            metadata = f.metadata()
-            encoding = ENCODINGS[metadata["encoding"]]
+            from train import Config
+
+            config_all = Config.from_safetensors_meta(f.metadata())
+            encoding = ENCODINGS[config_all.data.encoding]
     else:
         encoding = tiktoken.get_encoding("gpt2")
         model = GPT.from_pretrained(
             config.init_from, device=config.device_jax, dtype=config.dtype_jax
         )
-
-    print(model.to_config())
-    1 / 0
 
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),

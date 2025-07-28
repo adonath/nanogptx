@@ -523,8 +523,8 @@ class GPT:
         with safe_open(path, framework="numpy") as f:
             for k in f.keys():
                 data[k] = jax.device_put(f.get_tensor(k).astype(dtype), device=device)
-                n_layer = int(f.metadata().get("n_layer", GPTConfig.n_head))
-                n_head = int(f.metadata().get("n_head", GPTConfig.n_layer))
+                n_layer = int(f.metadata().get("model.n_layer", GPTConfig.n_head))
+                n_head = int(f.metadata().get("model.n_head", GPTConfig.n_layer))
 
         dummy_model = GPT.from_config(
             GPTConfig.dummy(n_layer=n_layer, n_head=n_head),
@@ -545,7 +545,7 @@ class GPT:
         for key in data_model:
             array = data.get(key)
             if array is None:
-                log.warning(f"No tensor found for {key}, setting to `None`")
+                log.debug(f"No tensor found for {key}, setting to `None`")
 
             data_model[key] = array
 
