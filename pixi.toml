@@ -6,6 +6,7 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
+test-shakespeare = {cmd=["python", "src/download.py", "--dataset", "shakespeare"]}
 
 [activation.env]
 JAX_TRACEBACK_FILTERING="off"

@@ -75,10 +75,8 @@ class CharEncoding:
 
     @classmethod
     def shakespeare(cls):
-        """Create from shakespeare"""
-        with (PATH_DATA / "download/shakespeare/input.txt").open("r") as f:
-            text = f.read()
-
+        """Create from shakespeare unique chars"""
+        text = "\n !$&',-.3:;?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         return cls.from_text(text)
 
     def encode_ordinary(self, sequence, **kwargs):
