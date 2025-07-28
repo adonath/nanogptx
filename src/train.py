@@ -398,8 +398,6 @@ if __name__ == "__main__":
     else:
         model = GPT.from_pretrained(config.init_from, **spec)
 
-    print(model.to_config())
-
     model = config.training.train(
         model=model,
         data_loader_train=iter(data_loader_train),
