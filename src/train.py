@@ -14,7 +14,7 @@ import tomli_w
 import tomllib
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
-from pydantic import ConfigDict, DirectoryPath, FilePath
+from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from tqdm import tqdm
@@ -31,6 +31,7 @@ from utils import (
 )
 
 import wandb
+from data import DatasetEnum, EncodingEnum
 
 TAB_WIDTH = 4
 
@@ -108,11 +109,23 @@ class DatasetLoader:
     batch_size: int = 12
     block_size: int = 1024
     verify: bool = True
-    path: FilePath | DirectoryPath = PATH_DATA / "train/openwebtext-gpt2"
+    dataset: DatasetEnum = DatasetEnum.openwebtext
+    encoding: EncodingEnum = EncodingEnum.gpt2
     seed: int = 8273
     dtype: str = "int32"
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
     suffix: Literal["train", "val"] = "train"
+
+    def __post_init__(self):
+        if self._index["encoding"] != self.encoding:
+            raise ValueError(
+                f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
+            )
+
+    @property
+    def path(self):
+        """Data path"""
+        return PATH_DATA / f"train/{self.dataset}-{self.encoding}"
 
     @cached_property
     def _index(self):
@@ -136,11 +149,6 @@ class DatasetLoader:
     def n_tokens_total(self):
         """N tokens"""
         return self._index[f"n-tokens-{self.suffix}"]
-
-    @property
-    def encoding(self):
-        """N tokens"""
-        return self._index["encoding"]
 
     @property
     def filenames(self):
