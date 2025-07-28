@@ -23,7 +23,8 @@ warmup_iters = 100 # not super necessary potentially
 
 [data]
 batch_size = 12
-path = "/Users/adonath/github/adonath/from-scratch-in-jax-nano-gpt/data/train/shakespeare-char"
+dataset = "shakespeare"
+encoding = "char"
 
 [model]
 block_size = 64 # context of up to 256 previous characters
