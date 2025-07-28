@@ -1,0 +1,27 @@
+name: Run download, train and sample Shakespeare
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  setup-pixi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pixi
+        run: |
+          curl -fsSL https://pixi.sh/install.sh | bash
+          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+
+      - name: Show pixi version
+        run: pixi --version
+
+      - name: Run scripts for testing
+        run: |
+            pixi run python src/download.py --dataset shakespeare
+            pixi run python src/train.py train-shakespeare-charm --max-iters 5
+            pixi run python src/sample.py pixi run python src/sample.py --init-from resume --max-new-tokens 100 --num-samples 1
