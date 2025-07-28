@@ -24,6 +24,12 @@ KEY_SEP = "."
 join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
 
 
+def flatten_dict(data):
+    """Flatten a dict"""
+    values, treedef = jax.tree.flatten_with_path(data)
+    return {join_path(path): value for path, value in values}
+
+
 def asdict_str(data):
     """Return a dict with str values"""
 
