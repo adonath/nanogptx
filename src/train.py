@@ -44,9 +44,14 @@ InitFrom = enum.StrEnum(
     | {"scratch": "scratch", "resume": "resume"},
 )
 
+PYDANTIC_CONFIG = ConfigDict(
+    use_enum_values=True,
+    extra="forbid",
+)
+
 
 # fmt: off
-@pydantic_dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
 class WAndBConfig:
     """WAndB logging"""
 
@@ -55,7 +60,7 @@ class WAndBConfig:
     wandb_run_name: str = field(default_factory=get_random_name)
 
 
-@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
+@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
 class OptimizerConfig:
     """Optimizer configuration"""
 
@@ -102,7 +107,7 @@ class OptimizerConfig:
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
-@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
+@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
 class DatasetLoader:
     """Dataset loading"""
 
@@ -197,7 +202,7 @@ class DatasetLoader:
                 yield Batch(x=x, y=y, idx_shard=idx_shard, idx_batches=idx_batches)
 
 
-@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
+@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
 class Trainer:
     """Training configuration"""
 
@@ -279,7 +284,7 @@ class Trainer:
         return model
 
 
-@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
+@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
 class Config:
     """General config"""
 
@@ -389,7 +394,6 @@ if __name__ == "__main__":
     spec = {"device": config.device_jax, "dtype": config.dtype_jax}
 
     if config.init_from == InitFrom.scratch:
-        config.model.vocab_size = data_loader_train.n_vocab
         model = GPT.from_config(config.model, rng_key=config.rng_key, **spec)
     elif config.init_from == InitFrom.resume:
         candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")

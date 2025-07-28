@@ -95,6 +95,9 @@ def sample(config):
             config.init_from, device=config.device_jax, dtype=config.dtype_jax
         )
 
+    print(model.to_config())
+    1 / 0
+
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
         device=config.device_jax,

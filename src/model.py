@@ -543,7 +543,7 @@ class GPT:
         ]
 
         for key in data_model:
-            data_model[key] = data[key]
+            data_model[key] = data.get(key)
 
             if any(key.endswith(_) for _ in transposed) and transpose_weights:
                 data_model[key] = data_model[key].T
