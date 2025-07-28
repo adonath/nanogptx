@@ -117,20 +117,20 @@ class DatasetLoader:
     suffix: Literal["train", "val"] = "train"
 
     def __post_init__(self):
-        try:
-            if self._index["encoding"] != self.encoding:
-                raise ValueError(
-                    f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
-                )
-        except FileNotFoundError:
-            log.warning(
-                f"Training data '{self.dataset}' with encoding '{self.encoding}' not available."
-            )
+        if self._index["encoding"] != self.encoding:
+            message = f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
+            raise ValidationError(message)
 
     @property
     def path(self):
         """Data path"""
-        return PATH_DATA / f"train/{self.dataset}-{self.encoding}"
+        path = PATH_DATA / f"train/{self.dataset}-{self.encoding}"
+
+        if not path.exists():
+            message = f"Training data '{self.dataset}' with encoding '{self.encoding}' not available."
+            raise ValidationError(message)
+
+        return path
 
     @cached_property
     def _index(self):
@@ -297,7 +297,10 @@ class Config:
     def __post_init__(self):
         # sync arguments after init
         self.training.wandb_log = self.logging.wandb_log
+
+        # TODO: which gets precendence here data or model definition?
         self.data.block_size = self.model.block_size
+        self.model.vocab_size = self.data.n_vocab
 
     @property
     def device_jax(self):
@@ -345,8 +348,7 @@ class Config:
             tomli_w.dump(asdict(self), f)
 
     def __str__(self):
-        data = {str(self.__class__.__name__): asdict(self)}
-        return tomli_w.dumps(data, indent=TAB_WIDTH)
+        return tomli_w.dumps(asdict(self), indent=TAB_WIDTH)
 
 
 def get_configs():
@@ -395,6 +397,8 @@ if __name__ == "__main__":
         model = GPT.read(latest, **spec)
     else:
         model = GPT.from_pretrained(config.init_from, **spec)
+
+    print(model.to_config())
 
     model = config.training.train(
         model=model,
