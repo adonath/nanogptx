@@ -23,6 +23,6 @@ jobs:
       - name: Run scripts for testing
         run: |
             pixi run python src/download.py --dataset shakespeare
-            pixi run python src/data.py --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1 --n-process 1
+            pixi run python src/data.py --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1 --n-process 1 --no-show-progress
             pixi run python src/train.py train-shakespeare-charm --max-iters 5
             pixi run python src/sample.py pixi run python src/sample.py --init-from resume --max-new-tokens 100 --num-samples 1
