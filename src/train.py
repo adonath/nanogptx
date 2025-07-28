@@ -14,7 +14,7 @@ import tomli_w
 import tomllib
 import tyro
 from model import GPT, GPTConfig, PretrainedModels
-from pydantic import ConfigDict
+from pydantic import ConfigDict, ValidationError
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from tqdm import tqdm
@@ -55,7 +55,7 @@ class WAndBConfig:
     wandb_run_name: str = field(default_factory=get_random_name)
 
 
-@pydantic_dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
 class OptimizerConfig:
     """Optimizer configuration"""
 
@@ -102,7 +102,7 @@ class OptimizerConfig:
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
-@pydantic_dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
 class DatasetLoader:
     """Dataset loading"""
 
@@ -197,7 +197,7 @@ class DatasetLoader:
                 yield Batch(x=x, y=y, idx_shard=idx_shard, idx_batches=idx_batches)
 
 
-@pydantic_dataclass(kw_only=True)
+@pydantic_dataclass(kw_only=True, config=ConfigDict(extra="forbid"))
 class Trainer:
     """Training configuration"""
 
@@ -357,10 +357,13 @@ def get_configs():
 
     # TODO: parse desription from the first line of the toml file
     for filename in filenames:
-        configs[filename.stem] = (
-            f"Default configuration from {filename.name}",
-            Config.read(filename),
-        )
+        try:
+            configs[filename.stem] = (
+                f"Default configuration from {filename.name}",
+                Config.read(filename),
+            )
+        except ValidationError as e:
+            log.warning(f"Invalid configuration in {filename}, {repr(e)}")
 
     return configs
 
