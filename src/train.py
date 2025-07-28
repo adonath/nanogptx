@@ -117,9 +117,14 @@ class DatasetLoader:
     suffix: Literal["train", "val"] = "train"
 
     def __post_init__(self):
-        if self._index["encoding"] != self.encoding:
-            raise ValueError(
-                f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
+        try:
+            if self._index["encoding"] != self.encoding:
+                raise ValueError(
+                    f"Requested encoding '{self.encoding}' does not agree with actual encoding '{self._index["encoding"]}' "
+                )
+        except FileNotFoundError:
+            log.warning(
+                f"Training data '{self.dataset}' with encoding '{self.encoding}' not available."
             )
 
     @property
