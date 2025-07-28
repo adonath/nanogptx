@@ -14,7 +14,6 @@ import jax
 import numpy as np
 import tiktoken
 import tyro
-from jax import numpy as jnp
 from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
 from utils import get_checksum
@@ -117,7 +116,7 @@ def tokenize(encoding, document) -> list[jax.Array]:
 
     tokens = [eot]  # the special <|endoftext|> token delimits all documents
     tokens.extend(encoding.encode_ordinary(document))
-    return jnp.array(tokens).astype(DTYPES[encoding.name])
+    return np.array(tokens).astype(DTYPES[encoding.name])
 
 
 def read_txt_shakespeare(filename) -> list[str]:
