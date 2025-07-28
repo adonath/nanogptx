@@ -3,7 +3,7 @@ import json
 import logging
 import random
 import string
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, is_dataclass
 from functools import partial
 from pathlib import Path
 from typing import Literal
@@ -108,7 +108,7 @@ def get_random_name():
     url = "https://raw.githubusercontent.com/fcrespo82/ubuntu-name-generator/refs/heads/master/src/app/names.ts"
     try:
         response = requests.get(url, timeout=1)
-    except requests.exceptions.Timeout:
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
         return "lazy-lama"
 
     text = response.content.decode("utf-8").replace("export const ubuntu_names = ", "")

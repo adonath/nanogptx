@@ -93,7 +93,7 @@ class GPTConfig:
 
 
 @tree_util.register_dataclass
-@dataclass(frozen=True)
+@dataclass
 class Embedding:
     """Embedding layer"""
 
@@ -114,10 +114,10 @@ class Embedding:
         cls,
         vocab_size: int,
         n_embd: int,
+        init_std=DEFAULT_INIT_STD,
         rng_key=DEFAULT_RNG_KEY,
         device=DEFAULT_DEVICE,
         dtype=DEFAULT_DTYPE,
-        init_std=DEFAULT_INIT_STD,
     ):
         """Create an embedding layer from number of features"""
         weight = init_std * jax.random.normal(
@@ -130,7 +130,7 @@ class Embedding:
 
 
 @tree_util.register_dataclass
-@dataclass(frozen=True)
+@dataclass
 class LayerNorm:
     """Layer normalization"""
 
@@ -214,11 +214,11 @@ class Linear:
         cls,
         n_in: int,
         n_out: int,
-        rng_key: jax.Array,
         use_bias: bool = True,
+        init_std=DEFAULT_INIT_STD,
+        rng_key=DEFAULT_RNG_KEY,
         device=DEFAULT_DEVICE,
         dtype=DEFAULT_DTYPE,
-        init_std=DEFAULT_INIT_STD,
     ):
         """Create a linear layer from number of features"""
         weight = init_std * jax.random.normal(rng_key, (n_out, n_in), dtype=dtype)
@@ -235,7 +235,7 @@ class Linear:
 
 
 @tree_util.register_dataclass
-@dataclass(frozen=True)
+@dataclass
 class MLP:
     """Multi-layer perceptron"""
 
@@ -282,7 +282,7 @@ class MLP:
 
 
 @tree_util.register_dataclass
-@dataclass(frozen=True)
+@dataclass
 class CausalSelfAttention:
     """Causal self-attention layer"""
 
@@ -347,7 +347,7 @@ class CausalSelfAttention:
 
 
 @tree_util.register_dataclass
-@dataclass(frozen=True)
+@dataclass
 class Block:
     """Self-attention block"""
 
@@ -384,7 +384,7 @@ class Block:
 
 
 @tree_util.register_dataclass
-@dataclass(frozen=True)
+@dataclass
 class GPT:
     """GPT Transformer model"""
 
@@ -426,7 +426,7 @@ class GPT:
         return self.wpe.vocab_size
 
     def to_config(self):
-        """Return configuration for model"""
+        """Return configuration for the current model"""
         return GPTConfig(
             block_size=self.block_size,
             vocab_size=self.wte.vocab_size,

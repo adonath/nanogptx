@@ -259,8 +259,8 @@ class Trainer:
                             }
                         )
 
-                rng_key, subkey = jax.random.split(rng_key)
-                model, opt_state = train_step(model, opt_state, batch, subkey)
+                rng_key = jax.random.fold_in(rng_key, n_iter)
+                model, opt_state = train_step(model, opt_state, batch, rng_key)
                 pbar.update(1)
 
         return model
@@ -283,7 +283,7 @@ class Config:
     def __post_init__(self):
         # sync arguments after init
         self.training.wandb_log = self.logging.wandb_log
-        self.dataset_train.block_size = self.model.block_size
+        self.data.block_size = self.model.block_size
 
     @property
     def device_jax(self):
@@ -361,10 +361,10 @@ if __name__ == "__main__":
             config=asdict(config),
         )
 
-    data_loader_train = config.dataset_train
+    data_loader_train = config.data
     log.info(f"Training dataset has {data_loader_train.n_tokens_total} tokens.")
 
-    data_loader_validate = config.dataset_val
+    data_loader_validate = config.data_val
     log.info(f"Validation dataset has {data_loader_validate.n_tokens_total} tokens.")
 
     spec = {"device": config.device_jax, "dtype": config.dtype_jax}
