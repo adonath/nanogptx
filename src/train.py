@@ -38,7 +38,7 @@ TAB_WIDTH = 4
 log = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
 
-InitFrom = enum.StrEnum(
+InitFromEnum = enum.StrEnum(
     "InitFrom",
     {_.name: _.value for _ in PretrainedModels}
     | {"scratch": "scratch", "resume": "resume"},
@@ -114,8 +114,8 @@ class DatasetLoader:
     batch_size: int = 12
     block_size: int = 1024
     verify: bool = True
-    dataset: DatasetEnum = DatasetEnum.openwebtext
-    encoding: EncodingEnum = EncodingEnum.gpt2
+    dataset: DatasetEnum | str = DatasetEnum.openwebtext
+    encoding: EncodingEnum | str = EncodingEnum.gpt2
     seed: int = 8273
     dtype: str = "int32"
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
@@ -289,7 +289,7 @@ class Config:
     """General config"""
 
     # TODO: add name and project?
-    init_from: InitFrom = InitFrom.scratch
+    init_from: InitFromEnum | str = InitFromEnum.scratch
     seed: int = 9283  # Random seed
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
     dtype: AvailableJaxDtypes = "float32"
@@ -393,9 +393,9 @@ if __name__ == "__main__":
 
     spec = {"device": config.device_jax, "dtype": config.dtype_jax}
 
-    if config.init_from == InitFrom.scratch:
+    if config.init_from == InitFromEnum.scratch:
         model = GPT.from_config(config.model, rng_key=config.rng_key, **spec)
-    elif config.init_from == InitFrom.resume:
+    elif config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
         latest = max(candidates, key=os.path.getctime)
         model = GPT.read(latest, **spec)

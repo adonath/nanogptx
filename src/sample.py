@@ -9,7 +9,7 @@ import tyro
 from model import GPT
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
-from train import InitFrom
+from train import InitFromEnum
 from utils import (
     JAX_DEVICES,
     JAX_DTYPES,
@@ -30,7 +30,7 @@ log = logging.getLogger(__file__)
 class SampleConfig:
     """Sampling configuration"""
 
-    init_from: InitFrom = InitFrom.gpt2  # Initialization source
+    init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
     start: str = (
         ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
     )
@@ -76,7 +76,7 @@ class SampleConfig:
 
 def sample(config):
     """Sample from a GPT style model"""
-    if config.init_from == InitFrom.resume:
+    if config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
         latest = max(candidates, key=os.path.getctime)
         model = GPT.read(
