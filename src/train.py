@@ -2,6 +2,7 @@ import enum
 import json
 import logging
 import os
+import time
 from collections import namedtuple
 from dataclasses import asdict, field, replace
 from functools import cached_property
@@ -243,15 +244,26 @@ class Trainer:
             params = optax.apply_updates(model, updates)
             return params, opt_state
 
+        flops = model.flops(batch_size=data_loader_train.batch_size)
+
+        data_loader_train, data_loader_validate = (
+            iter(data_loader_train),
+            iter(data_loader_validate),
+        )
+
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
 
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
+            fps = float("NaN")
+
             for n_iter, batch in zip(
                 range(self.optimizer.max_iters), data_loader_train
             ):
+                time_start = time.perf_counter()
+
                 if n_iter % self.eval_interval == 0:
                     loss_train = estimate_mean_loss(
                         model, data_loader_train, n_iter=self.eval_iters
@@ -261,8 +273,9 @@ class Trainer:
                     )
                     lr = opt_state[1].hyperparams["learning_rate"]
                     pbar.set_postfix_str(
-                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}"
+                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}, tfps: {fps/1e12:.3f}"
                     )
+
                     if self.wandb_log:
                         wandb.log(
                             {
@@ -271,11 +284,13 @@ class Trainer:
                                 "loss-val": loss_val,
                                 "lr": lr,
                                 "shard": batch.idx_shard,
+                                "fps": fps,
                             }
                         )
 
                 rng_key = jax.random.fold_in(rng_key, n_iter)
                 model, opt_state = train_step(model, opt_state, batch, rng_key)
+                fps = flops.per_iter / (time.perf_counter() - time_start)
                 pbar.update(1)
 
         return model
@@ -423,8 +438,8 @@ if __name__ == "__main__":
 
     model = config.training.train(
         model=model,
-        data_loader_train=iter(data_loader_train),
-        data_loader_validate=iter(data_loader_validate),
+        data_loader_train=data_loader_train,
+        data_loader_validate=data_loader_validate,
         rng_key=config.rng_key,
     )
 

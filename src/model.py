@@ -425,7 +425,7 @@ class GPT:
         return logits
 
     @property
-    def n_layers(self):
+    def n_layer(self):
         """Number of layers"""
         return len(self.h)
 
@@ -449,28 +449,32 @@ class GPT:
         return GPTConfig(
             block_size=self.block_size,
             vocab_size=self.wte.vocab_size,
-            n_layer=self.n_layers,
+            n_layer=self.n_layer,
             n_head=self.h[0].attn.n_head,
             n_embd=self.wte.n_embd,
             dropout_rate=self.drop.rate,
             use_bias=self.ln_f.bias is not None,
         )
 
-    def flops(self, fwdbwd_per_iter=1):
+    def flops(self, batch_size=1, dtype=jnp.int32):
         """Estimate number of flops per iteration"""
-        # first estimate the number of flops we do per iteration.
-        # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
-        N = self.n_parameters()
-        L, H, Q, T = (
-            self.n_layer,
-            self.n_head,
-            self.n_embd // self.n_head,
-            self.block_size,
-        )
 
-        flops_per_token = 6 * N + 12 * L * H * Q * T
-        flops_per_fwdbwd = flops_per_token * T
-        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
+        def f(x):
+            return self(x, rng_key=jax.random.key(923), is_training=True)
+
+        def get_flops(x):
+            compiled = jax.jit(f).trace(x).lower().compile()
+            return compiled.cost_analysis()["flops"]
+
+        x = jax.numpy.zeros((1, 1), dtype=dtype)
+        flops_per_token = get_flops(x)
+
+        x = jax.numpy.zeros((1, self.block_size), dtype=dtype)
+        flops_per_fwdbwd = get_flops(x)
+
+        x = jax.numpy.zeros((batch_size, self.block_size), dtype=dtype)
+        flops_per_iter = get_flops(x)
+
         return Flops(
             per_token=flops_per_token,
             per_fwdbwd=flops_per_fwdbwd,

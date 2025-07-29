@@ -20,6 +20,8 @@ PATH_BASE = Path(__file__).parent.parent
 PATH_DATA = PATH_BASE / "data"
 KEY_SEP = "."
 
+FLOPS_UNIT = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
+
 
 join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
 
