@@ -5,7 +5,7 @@ dtype = "float32"
 
 
 [training]
-eval_interval = 250 # keep frequent because we'll overfit
+eval_interval = 100 # keep frequent because we'll overfit
 eval_iters = 20
 always_save_checkpoint = false
 
