@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import namedtuple
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import partial
@@ -383,6 +384,9 @@ class Block:
         return x
 
 
+Flops = namedtuple("Flops", ["per_token", "per_iter", "per_fwdbwd"])
+
+
 @tree_util.register_dataclass
 @dataclass
 class GPT:
@@ -421,6 +425,21 @@ class GPT:
         return logits
 
     @property
+    def n_layers(self):
+        """Number of layers"""
+        return len(self.h)
+
+    @property
+    def n_head(self):
+        """Number of heads"""
+        return self.h[0].attn.n_head
+
+    @property
+    def n_embd(self):
+        """Embd dim"""
+        return self.wte.n_embd
+
+    @property
     def block_size(self):
         """Block size"""
         return self.wpe.vocab_size
@@ -430,11 +449,32 @@ class GPT:
         return GPTConfig(
             block_size=self.block_size,
             vocab_size=self.wte.vocab_size,
-            n_layer=len(self.h),
+            n_layer=self.n_layers,
             n_head=self.h[0].attn.n_head,
             n_embd=self.wte.n_embd,
             dropout_rate=self.drop.rate,
             use_bias=self.ln_f.bias is not None,
+        )
+
+    def flops(self, fwdbwd_per_iter=1):
+        """Estimate number of flops per iteration"""
+        # first estimate the number of flops we do per iteration.
+        # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
+        N = self.n_parameters()
+        L, H, Q, T = (
+            self.n_layer,
+            self.n_head,
+            self.n_embd // self.n_head,
+            self.block_size,
+        )
+
+        flops_per_token = 6 * N + 12 * L * H * Q * T
+        flops_per_fwdbwd = flops_per_token * T
+        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
+        return Flops(
+            per_token=flops_per_token,
+            per_fwdbwd=flops_per_fwdbwd,
+            per_iter=flops_per_iter,
         )
 
     @classmethod
