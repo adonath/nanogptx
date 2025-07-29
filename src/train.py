@@ -270,7 +270,7 @@ class Trainer:
                                 "loss-train": loss_train,
                                 "loss-val": loss_val,
                                 "lr": lr,
-                                "shard": batch.shard_idx,
+                                "shard": batch.idx_shard,
                             }
                         )
 
@@ -399,8 +399,8 @@ if __name__ == "__main__":
 
     if config.logging.wandb_log:
         run = wandb.init(
-            project=config.wandb_project,
-            name=config.wandb_run_name,
+            project=config.logging.wandb_project,
+            name=config.logging.wandb_run_name,
             config=asdict(config),
         )
 
