@@ -141,6 +141,19 @@ def read_xz_from_tar(tar_path, xz_filename) -> list[str]:
     return data
 
 
+def read_jsonl_pile_uncopyrighted(json_filename) -> list[str]:
+    """Read JSON line format"""
+
+    def extract_text(line):
+        """Extract text from a single linee JSON file"""
+        return json.loads(line)["text"]
+
+    with json_filename.open("r") as json_file:
+        data = list(map(extract_text, json_file))
+
+    return data
+
+
 def read_json_tinystories(json_filename) -> list[str]:
     """Read a tarfile and extract json"""
 
@@ -242,6 +255,7 @@ READ_METHODS = {
     DatasetEnum.shakespeare: read_txt_shakespeare,
     DatasetEnum.tinystories: read_json_tinystories,
     DatasetEnum.openwebtext: read_xz_from_tar,
+    DatasetEnum.pile_uncopyrighted: read_jsonl_pile_uncopyrighted,
 }
 
 ENCODINGS = {
