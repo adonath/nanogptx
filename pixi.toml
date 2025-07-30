@@ -31,6 +31,9 @@ clouseau = { git = "https://github.com/adonath/clouseau.git", branch = "main" }
 [feature.cpu.dependencies]
 jax = ">=0.5.0,<0.7"
 
+[feature.cpu.activation.env]
+XLA_FLAGS = '--xla_force_host_platform_device_count=8' # useful for development of shardecd code
+
 [feature.gpu.system-requirements]
 cuda = "12"
 
