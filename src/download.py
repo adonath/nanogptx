@@ -30,6 +30,7 @@ DATA_URLS = {
     DatasetEnum.shakespeare: ["https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",],
     DatasetEnum.openwebtext: [f"https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{idx:02d}.tar" for idx in range(21)],
     DatasetEnum.tinystories: ["https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories_all_data.tar.gz",],
+    DatasetEnum.pile_uncopyrighted: [f"https://huggingface.co/datasets/monology/pile-uncopyrighted/resolve/main/train/{idx:02d}.jsonl.zst" for idx in range(30)]
 }
 # fmt: on
 
@@ -55,6 +56,24 @@ def extract_tar_and_remove(archive_path, extraction_path):
     archive_path.unlink()
 
 
+def decompress_zst_file(input_filepath, output_filepath):
+    """
+    Decompresses a .zst file to a specified output file.
+
+    Args:
+        input_filepath (str): Path to the .zst file to decompress.
+        output_filepath (str): Path where the decompressed data will be written.
+    """
+    import zstandard
+
+    dctx = zstandard.ZstdDecompressor()
+
+    with open(input_filepath, "rb") as ifh:
+        with open(output_filepath, "wb") as ofh:
+            log.info(f"Extracting {input_filepath} to {output_filepath}")
+            dctx.copy_stream(ifh, ofh)
+
+
 def download_file(url, path):
     """Download file"""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +91,9 @@ def download_file(url, path):
 
     if path.name.endswith((".tar", ".tar.gz")):
         extract_tar_and_remove(path, path.parent)
+
+    if path.name.endswith(".zst"):
+        decompress_zst_file(path, path.with_suffix(".jsonl"))
 
     return path
 
