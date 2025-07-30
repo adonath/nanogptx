@@ -5,7 +5,7 @@ import os
 import time
 from collections import namedtuple
 from dataclasses import asdict, field, replace
-from functools import cached_property
+from functools import cached_property, partial
 from typing import Literal
 
 import jax
@@ -236,14 +236,15 @@ class Trainer:
 
             return np.mean(losses)
 
-        @jax.jit
+        @partial(jax.jit, donate_argnames=("model", "opt_state"))
         def train_step(model, opt_state, batch, rng):
             """Training step"""
             grads = jax.grad(loss_fn)(model, batch, rng, is_training=True)
             updates, opt_state = self.optimizer.optax.update(grads, opt_state, model)
-            params = optax.apply_updates(model, updates)
-            return params, opt_state
+            model = optax.apply_updates(model, updates)
+            return model, opt_state
 
+        # TODO: compute flops from train_step
         flops = model.flops(batch_size=data_loader_train.batch_size)
 
         data_loader_train, data_loader_validate = (
