@@ -163,9 +163,13 @@ def read_json_tinystories(json_filename) -> list[str]:
     return [_["story"] for _ in data]
 
 
-def read_parquet():
+def read_parquet(filename) -> list[str]:
     """Read a parquet file for fineweb"""
-    ...
+    import pandas as pd
+
+    data = pd.read_parquet(filename)
+
+    return list(data["text"])
 
 
 def write_safetensors(tokens, filename, encoding):
@@ -256,6 +260,10 @@ READ_METHODS = {
     DatasetEnum.tinystories: read_json_tinystories,
     DatasetEnum.openwebtext: read_xz_from_tar,
     DatasetEnum.pile_uncopyrighted: read_jsonl_pile_uncopyrighted,
+    DatasetEnum.fineweb_10b: read_parquet,
+    DatasetEnum.fineweb_100b: read_parquet,
+    DatasetEnum.fineweb_edu_10b: read_parquet,
+    DatasetEnum.fineweb_edu_100b: read_parquet,
 }
 
 ENCODINGS = {
