@@ -1,5 +1,6 @@
 import logging
 import tarfile
+from itertools import product
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
@@ -17,7 +18,6 @@ DATA_PATH = Path(__file__).parent.parent / "data"
 
 N_THREADS_DEAFULT = cpu_count() // 2
 
-
 MODEL_URLS = {
     PretrainedModels.gpt2_medium: "https://huggingface.co/openai-community/gpt2-medium/resolve/main/model.safetensors",
     PretrainedModels.gpt2_large: "https://huggingface.co/openai-community/gpt2-large/resolve/main/model.safetensors",
@@ -30,7 +30,11 @@ DATA_URLS = {
     DatasetEnum.shakespeare: ["https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt",],
     DatasetEnum.openwebtext: [f"https://huggingface.co/datasets/Skylion007/openwebtext/resolve/main/subsets/urlsf_subset{idx:02d}.tar" for idx in range(21)],
     DatasetEnum.tinystories: ["https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories_all_data.tar.gz",],
-    DatasetEnum.pile_uncopyrighted: [f"https://huggingface.co/datasets/monology/pile-uncopyrighted/resolve/main/train/{idx:02d}.jsonl.zst" for idx in range(30)]
+    DatasetEnum.pile_uncopyrighted: [f"https://huggingface.co/datasets/monology/pile-uncopyrighted/resolve/main/train/{idx:02d}.jsonl.zst" for idx in range(30)],
+    DatasetEnum.fineweb_10b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb/resolve/main/sample/10BT/{idx:03d}_00000.parquet" for idx in range(15)],
+    DatasetEnum.fineweb_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb/resolve/main/sample/100BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in product(range(15), range(10))],
+    DatasetEnum.fineweb_edu_10b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT/{idx:03d}_00000.parquet" for idx in range(14)],
+    DatasetEnum.fineweb_edu_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in  product(range(14), range(10))],
 }
 # fmt: on
 
