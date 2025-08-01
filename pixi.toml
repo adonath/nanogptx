@@ -59,7 +59,7 @@ JAX_ENABLE_X64="0"
 ENABLE_PJRT_COMPATIBILITY="1"
 
 [environments]
-cpu = ["cpu"]
+cpu = ["cpu", "io"]
 gpu = ["gpu"]
 gpu-mps = ["gpu-mps"]
 notebook = ["notebook", "cpu", "io"]
