@@ -28,6 +28,13 @@ pydantic = ">=2.11.7,<3"
 tomli-w = ">=1.2.0, <2"
 clouseau = { git = "https://github.com/adonath/clouseau.git", branch = "main" }
 
+[feature.io.dependencies]
+fastparquet = ">=2024.11.0,<2025"
+pandas = ">=2.2.3,<3"
+
+[feature.notebook.dependencies]
+notebook = ">=7.1.4,<8"
+
 [feature.cpu.dependencies]
 jax = ">=0.5.0,<0.7"
 
@@ -55,3 +62,4 @@ ENABLE_PJRT_COMPATIBILITY="1"
 cpu = ["cpu"]
 gpu = ["gpu"]
 gpu-mps = ["gpu-mps"]
+notebook = ["notebook", "cpu", "io"]
