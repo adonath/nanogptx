@@ -8,8 +8,7 @@ from pathlib import Path
 import requests
 import tyro
 from model import PretrainedModels
-
-from data import DatasetEnum
+from prepare import DatasetEnum
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
