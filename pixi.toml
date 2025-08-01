@@ -6,7 +6,7 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-download = {cmd=["python", "src/download.py"], env="cpu"}
+download = {cmd=["python", "src/download.py"], environment="cpu"}
 prepare = {cmd=["python", "src/data.py"]}
 train = {cmd=["python", "src/train.py"]}
 sample = {cmd=["python", "src/sample.py"]}
