@@ -23,16 +23,6 @@ log = logging.getLogger(__file__)
 PATH_DATA = Path(__file__).parent.parent / "data"
 
 
-class EncodingEnum(StrEnum):
-    """Tokenizer"""
-
-    gpt2 = "gpt2"
-    char = "char"
-
-
-DTYPES = {EncodingEnum.gpt2: np.uint16, EncodingEnum.char: np.uint16}
-
-
 class DatasetEnum(StrEnum):
     """Dataset enum"""
 
@@ -90,20 +80,6 @@ class CharEncoding:
     def decode(self, tokens):
         """Encode sequence"""
         return "".join([self.itos[_] for _ in tokens])
-
-
-@dataclass
-class DataPreparationConfig:
-    """Data preparation config"""
-
-    shard_size: int = int(1e8)  # Size of each data shard in the output files, in tokens
-    shards_val: tuple[int] = (0,)  # Which shards to use for validation
-    encoding: EncodingEnum = EncodingEnum.gpt2
-    dataset: DatasetEnum = DatasetEnum.shakespeare
-    n_process: int = max(1, cpu_count() - 2)
-    chunksize: int = 16
-    show_progress: bool = True
-    write_summary_only: bool = False  # write summary statistics json file
 
 
 def prepocess(document: str):
@@ -267,9 +243,27 @@ READ_METHODS = {
 }
 
 ENCODINGS = {
-    EncodingEnum.gpt2: tiktoken.get_encoding("gpt2"),
-    EncodingEnum.char: CharEncoding.shakespeare(),
+    "gpt2": tiktoken.get_encoding("gpt2"),
+    "char": CharEncoding.shakespeare(),
 }
+
+EncodingEnum = StrEnum("EncodingEnum", ENCODINGS.keys())
+
+DTYPES = {EncodingEnum.gpt2: np.uint16, EncodingEnum.char: np.uint16}
+
+
+@dataclass
+class DataPreparationConfig:
+    """Data preparation config"""
+
+    shard_size: int = int(1e8)  # Size of each data shard in the output files, in tokens
+    shards_val: tuple[int] = (0,)  # Which shards to use for validation
+    encoding: EncodingEnum = EncodingEnum.gpt2
+    dataset: DatasetEnum = DatasetEnum.shakespeare
+    n_process: int = max(1, cpu_count() - 2)
+    chunksize: int = 16
+    show_progress: bool = True
+    write_summary_only: bool = False  # write summary statistics json file
 
 
 def prepare(config):
