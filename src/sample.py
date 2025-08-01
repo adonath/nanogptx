@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import tiktoken
 import tyro
 from model import GPT
+from prepare import DTYPES, ENCODINGS
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from train import InitFromEnum
@@ -17,8 +18,6 @@ from utils import (
     AvailableJaxDevices,
     AvailableJaxDtypes,
 )
-
-from data import DTYPES, ENCODINGS
 
 PREFIX = "FILE:"
 

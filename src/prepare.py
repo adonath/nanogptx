@@ -247,7 +247,7 @@ ENCODINGS = {
     "char": CharEncoding.shakespeare(),
 }
 
-EncodingEnum = StrEnum("EncodingEnum", ENCODINGS.keys())
+EncodingEnum = StrEnum("EncodingEnum", list(ENCODINGS))
 
 DTYPES = {EncodingEnum.gpt2: np.uint16, EncodingEnum.char: np.uint16}
 
