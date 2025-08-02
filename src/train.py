@@ -339,7 +339,6 @@ class Config:
         self.training.wandb_log = self.logging.wandb_log
 
         # TODO: which gets precendence here data or model definition?
-        self.model.vocab_size = self.data.n_vocab
         self.data.devices = self.devices
 
     @property
@@ -463,6 +462,8 @@ if __name__ == "__main__":
     log.info(f"Validation dataset has {data_loader_validate.n_tokens_total} tokens.")
 
     spec = {"device": config.sharding_replicated, "dtype": config.dtype_jax}
+
+    config.model.vocab_size = config.data.n_vocab
 
     if config.init_from == InitFromEnum.scratch:
         model = GPT.from_config(config.model, rng_key=config.rng_key, **spec)
