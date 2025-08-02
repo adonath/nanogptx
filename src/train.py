@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from collections import namedtuple
+from collections.abc import Sequence
 from dataclasses import asdict, field, replace
 from functools import cached_property, partial
 from typing import Literal
@@ -14,7 +15,9 @@ import optax
 import tomli_w
 import tomllib
 import tyro
+from jax.sharding import NamedSharding, PartitionSpec
 from model import GPT, GPTConfig, PretrainedModels
+from prepare import DatasetEnum, EncodingEnum
 from pydantic import ConfigDict, ValidationError
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
@@ -34,7 +37,6 @@ from utils import (
 )
 
 import wandb
-from data import DatasetEnum, EncodingEnum
 
 TAB_WIDTH = 4
 
@@ -114,15 +116,34 @@ Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 class DatasetLoader:
     """Dataset loading"""
 
-    batch_size: int = 12
+    batch_size: int = 16
     block_size: int = 1024
     verify: bool = True
     dataset: DatasetEnum | str = DatasetEnum.openwebtext
     encoding: EncodingEnum | str = EncodingEnum.gpt2
+    devices: Sequence[AvailableJaxDevices] = tuple(JAX_DEVICES)
     seed: int = 8273
     dtype: str = "int32"
-    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
     suffix: Literal["train", "val"] = "train"
+
+    @property
+    def mesh_jax(self):
+        """Mesh over the batch axis for distributed parallel data training"""
+        return jax.make_mesh(
+            axis_shapes=(len(self.devices),),
+            axis_names=("batch",),
+            devices=self.devices_jax,
+        )
+
+    @property
+    def devices_jax(self):
+        """Return actual device"""
+        return [JAX_DEVICES[_] for _ in self.devices]
+
+    @property
+    def sharding_batch(self):
+        """Batch sharding"""
+        return NamedSharding(self.mesh_jax, PartitionSpec(*self.mesh_jax.axis_names))
 
     @property
     def path(self):
@@ -197,7 +218,12 @@ class DatasetLoader:
                 y = np.stack(
                     [data[i + 1 : i + 1 + self.block_size] for i in idx_batches]
                 )
-                yield Batch(x=x, y=y, idx_shard=idx_shard, idx_batches=idx_batches)
+                yield Batch(
+                    x=jax.device_put(x, self.sharding_batch),
+                    y=jax.device_put(y, self.sharding_batch),
+                    idx_shard=idx_shard,
+                    idx_batches=idx_batches,
+                )
 
 
 @pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
@@ -304,7 +330,7 @@ class Config:
     # TODO: add name and project?
     init_from: InitFromEnum | str = InitFromEnum.scratch
     seed: int = 9283  # Random seed
-    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
+    devices: Sequence[AvailableJaxDevices] = tuple(JAX_DEVICES)
     dtype: AvailableJaxDtypes = "float32"
     training: Trainer = field(default_factory=Trainer)
     data: DatasetLoader = field(default_factory=DatasetLoader)
@@ -319,11 +345,26 @@ class Config:
         # TODO: which gets precendence here data or model definition?
         self.data.block_size = self.model.block_size
         self.model.vocab_size = self.data.n_vocab
+        self.data.devices = self.devices
 
     @property
-    def device_jax(self):
+    def mesh_jax(self):
+        """Mesh over the batch axis for distributed parallel data training"""
+        return jax.make_mesh(
+            axis_shapes=(len(self.devices),),
+            axis_names=("batch",),
+            devices=self.devices_jax,
+        )
+
+    @property
+    def sharding_replicated(self):
+        """Replicated sharding"""
+        return NamedSharding(self.mesh_jax, PartitionSpec())
+
+    @property
+    def devices_jax(self):
         """Return actual device"""
-        return JAX_DEVICES[self.device]
+        return [JAX_DEVICES[_] for _ in self.devices]
 
     @property
     def dtype_jax(self):
@@ -426,7 +467,7 @@ if __name__ == "__main__":
     data_loader_validate = config.data_val
     log.info(f"Validation dataset has {data_loader_validate.n_tokens_total} tokens.")
 
-    spec = {"device": config.device_jax, "dtype": config.dtype_jax}
+    spec = {"device": config.sharding_replicated, "dtype": config.dtype_jax}
 
     if config.init_from == InitFromEnum.scratch:
         model = GPT.from_config(config.model, rng_key=config.rng_key, **spec)
