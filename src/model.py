@@ -27,6 +27,25 @@ DEFAULT_DTYPE = jnp.float32
 DEFAULT_RNG_KEY = jax.random.key(98238)
 DEFAULT_DEVICE = None
 
+USE_FLASH_ATTENTION = True
+
+
+def dot_product_flash_attention(query, key, value, is_causal):
+    """Dot product attention"""
+    from flash_attention_jax import causal_flash_attention
+
+    if is_causal:
+        return causal_flash_attention(query, key, value)
+
+    raise ValueError("Non-causal attention is not supported with flash attention")
+
+
+dot_product_attention = (
+    jax.nn.dot_product_attention
+    if not USE_FLASH_ATTENTION
+    else dot_product_flash_attention
+)
+
 
 class PretrainedModels(str, Enum):
     """Pretrained models"""
@@ -334,7 +353,7 @@ class CausalSelfAttention:
         key = jnp.reshape(key, shape)
         value = jnp.reshape(value, shape)
 
-        x = jax.nn.dot_product_attention(
+        x = dot_product_attention(
             query=query,
             key=key,
             value=value,
