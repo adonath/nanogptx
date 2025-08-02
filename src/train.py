@@ -189,7 +189,7 @@ class DatasetLoader:
         """Number of shards"""
         return len(self.filenames)
 
-    def __iter__(self):
+    def iter(self, block_size):
         random_state = np.random.default_rng(self.seed)
 
         while True:
@@ -211,13 +211,11 @@ class DatasetLoader:
 
             # we aim for a statistical coverage here...
             for _ in range(len(data) // self.batch_size):
-                max_val = len(data) - self.block_size
+                max_val = len(data) - block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
-                x = np.stack([data[i : i + self.block_size] for i in idx_batches])
-                y = np.stack(
-                    [data[i + 1 : i + 1 + self.block_size] for i in idx_batches]
-                )
+                x = np.stack([data[i : i + block_size] for i in idx_batches])
+                y = np.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
                 yield Batch(
                     x=jax.device_put(x, self.sharding_batch),
                     y=jax.device_put(y, self.sharding_batch),
@@ -273,10 +271,8 @@ class Trainer:
         # TODO: compute flops from train_step
         flops = model.flops(batch_size=data_loader_train.batch_size)
 
-        data_loader_train, data_loader_validate = (
-            iter(data_loader_train),
-            iter(data_loader_validate),
-        )
+        data_loader_train = data_loader_train.iter(block_size=model.block_size)
+        data_loader_validate = data_loader_validate.iter(block_size=model.block_size)
 
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
@@ -343,7 +339,6 @@ class Config:
         self.training.wandb_log = self.logging.wandb_log
 
         # TODO: which gets precendence here data or model definition?
-        self.data.block_size = self.model.block_size
         self.model.vocab_size = self.data.n_vocab
         self.data.devices = self.devices
 
