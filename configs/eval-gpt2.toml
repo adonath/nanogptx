@@ -9,6 +9,5 @@ eval_iters = 500 # use more iterations to get good estimate
 [data]
 batch_size = 8
 
-
 [logging]
 wandb_log = false
