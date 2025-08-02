@@ -24,6 +24,7 @@ batch_size = 12
 dataset = "shakespeare"
 encoding = "char"
 
+
 [model]
 block_size = 64 # context of up to 256 previous characters
 n_layer = 4
