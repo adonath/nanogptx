@@ -16,12 +16,14 @@ import tomli_w
 import tomllib
 import tyro
 from jax.sharding import NamedSharding, PartitionSpec
-from model import GPT, GPTConfig, PretrainedModels
-from prepare import DatasetEnum, EncodingEnum
 from pydantic import ConfigDict, ValidationError
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from tqdm import tqdm
+
+import wandb
+from model import GPT, GPTConfig, PretrainedModels
+from prepare import DatasetEnum, EncodingEnum
 from utils import (
     JAX_DEVICES,
     JAX_DTYPES,
@@ -35,8 +37,6 @@ from utils import (
     get_random_name,
     join_path,
 )
-
-import wandb
 
 TAB_WIDTH = 4
 
