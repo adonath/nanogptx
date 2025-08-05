@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Literal
 
 import jax
-import requests
 from jax import numpy as jnp
 from jax import tree_util
 
@@ -113,14 +112,8 @@ def assert_shapes_equal(pytree, other_pytree):
 
 def get_random_name():
     """Generate random adjective-animal name"""
-    url = "https://raw.githubusercontent.com/fcrespo82/ubuntu-name-generator/refs/heads/master/src/app/names.ts"
-    try:
-        response = requests.get(url, timeout=1)
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-        return "lazy-lama"
-
-    text = response.content.decode("utf-8").replace("export const ubuntu_names = ", "")
-    data = json.loads(text)
+    with (PATH_BASE / "assets/names.json").open("r") as f:
+        data = json.load(f)
 
     letter = random.choice(string.ascii_lowercase)
     animals = data[letter]["animals"]
