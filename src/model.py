@@ -17,6 +17,7 @@ from jax import tree_util
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from safetensors.flax import save_file
+
 from utils import PATH_DATA, asdict_str, flatten_pytree_with_path, join_path
 
 log = logging.getLogger(__name__)
@@ -579,7 +580,7 @@ class GPT:
     ) -> GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
-        # not nice, but jax does allow generate a PyTree from static definitions
+        # not nice, but JAX would need to allow generating a PyTree structure from a static definition.
         log.info(f"Reading model from {path}")
 
         data = {}
@@ -595,7 +596,7 @@ class GPT:
         paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
         data_model = {join_path(path): value for path, value in paths}
 
-        # tied parameters are missing, just creat a reference as placeholder
+        # tied parameters are missing, just create a reference as placeholder
         data["lm_head.weight"] = data["wte.weight"]
 
         transposed = [
