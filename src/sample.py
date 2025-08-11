@@ -81,8 +81,6 @@ def sample(config):
         latest = max(candidates, key=os.path.getctime)
         model = GPT.read(
             latest,
-            device=config.device_jax,
-            dtype=config.dtype_jax,
             transpose_weights=False,
         )
 
@@ -93,9 +91,7 @@ def sample(config):
             encoding = ENCODINGS[config_all.data.encoding]
     else:
         encoding = tiktoken.get_encoding("gpt2")
-        model = GPT.from_pretrained(
-            config.init_from, device=config.device_jax, dtype=config.dtype_jax
-        )
+        model = GPT.from_pretrained(config.init_from)
 
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
@@ -106,7 +102,10 @@ def sample(config):
     # use num_samples as batch size
     x = jnp.repeat(x, repeats=config.num_samples, axis=0)
 
-    samples = model.init().generate(
+    samples = model.init(
+        device=config.device_jax,
+        dtype=config.dtype_jax,
+    ).generate(
         x,
         max_new_tokens=config.max_new_tokens,
         rng_key=config.rng_key,

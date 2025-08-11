@@ -172,12 +172,12 @@ class ArrayInfo:
     dtype: AvailableJaxDtypes = DEFAULT_DTYPE
     out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
 
-    def to_value(self, rng_key):
+    def to_value(self, rng_key, dtype=None, device=None):
         """Initialize to value"""
         return self.init(
             key=rng_key,
-            shape=self.shape,
-            dtype=self.dtype,
+            shape=self.shape if device is None else device,
+            dtype=self.dtype if dtype is None else dtype,
             out_sharding=self.out_sharding,
         )
 
@@ -196,6 +196,8 @@ class InitArrays:
     """State base callable"""
 
     rng_key: jax.Array
+    dtype: AvailableJaxDtypes = DEFAULT_DTYPE
+    device: AvailableJaxDevices = DEFAULT_DEVICE
 
     def __call__(self, leave):
         if isinstance(leave, ArrayInfo):
@@ -662,17 +664,15 @@ class GPT:
 
         return n_parameters
 
-    def init(self, rng_key=DEFAULT_RNG_KEY):
+    def init(self, rng_key=DEFAULT_RNG_KEY, dtype=DEFAULT_DTYPE, device=DEFAULT_DEVICE):
         """Init arrays of the model"""
-        init_arrays = InitArrays(rng_key=rng_key)
+        init_arrays = InitArrays(rng_key=rng_key, dtype=dtype, device=device)
         return jax.tree.map(
             init_arrays, self, is_leaf=lambda _: isinstance(_, ArrayInfo)
         )
 
     @classmethod
-    def from_pretrained(
-        cls, model_type, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
-    ) -> GPT:
+    def from_pretrained(cls, model_type) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
         path = PATH_DATA / f"models/{model_type.value}/model.safetensors"
@@ -682,7 +682,7 @@ class GPT:
                 f"Model {model_type.value} not available. Download weights using 'download.py' first."
             )
 
-        return cls.read(path, device=device, dtype=dtype)
+        return cls.read(path)
 
     @classmethod
     def read(cls, path, transpose_weights=True) -> GPT:
