@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import namedtuple
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import partial
@@ -18,7 +19,14 @@ from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from safetensors.flax import save_file
 
-from utils import PATH_DATA, asdict_str, flatten_pytree_with_path, join_path
+from utils import (
+    PATH_DATA,
+    AvailableJaxDevices,
+    AvailableJaxDtypes,
+    asdict_str,
+    flatten_pytree_with_path,
+    join_path,
+)
 
 log = logging.getLogger(__name__)
 
@@ -113,6 +121,59 @@ class GPTConfig:
         )
 
 
+# TODO: initializers have uniform API since 0.7.0 until then we use:
+def initialize_normal(std):
+    """Initialize with normal distribution"""
+
+    def normal(key, shape, dtype, out_sharding):
+        return std * jax.device_put(
+            jax.random.normal(key, shape=shape, dtype=dtype), out_sharding
+        )
+
+    return normal
+
+
+def initialize_ones(key, shape, dtype, out_sharding):
+    """Initialize zeros"""
+    return jnp.ones(shape=shape, dtype=dtype, device=out_sharding)
+
+
+@dataclass(frozen=True)
+class ArrayInfo:
+    """Array info, somewhat inspired from jax-llm-examples"""
+
+    shape: tuple[int, ...]
+    init: Callable | None = None
+    dtype: AvailableJaxDtypes = DEFAULT_DTYPE
+    out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
+
+    def to_value(self, rng_key):
+        """Initialize to value"""
+        return self.init(
+            key=rng_key,
+            shape=self.shape,
+            dtype=self.dtype,
+            out_sharding=self.out_sharding,
+        )
+
+
+@dataclass
+class InitArrays:
+    """State base callable"""
+
+    rng_key: jax.Array
+
+    def __call__(self, leave):
+        if isinstance(leave, ArrayInfo):
+            if leave.init is None:
+                return None
+
+            self.rng_key, subkey = jax.random.split(self.rng_key)
+            return leave.to_value(subkey)
+
+        return leave
+
+
 @tree_util.register_dataclass
 @dataclass
 class Embedding:
@@ -136,15 +197,17 @@ class Embedding:
         vocab_size: int,
         n_embd: int,
         init_std=DEFAULT_INIT_STD,
-        rng_key=DEFAULT_RNG_KEY,
         device=DEFAULT_DEVICE,
         dtype=DEFAULT_DTYPE,
     ):
         """Create an embedding layer from number of features"""
-        weight = init_std * jax.random.normal(
-            rng_key, (vocab_size, n_embd), dtype=dtype
+        weight = ArrayInfo(
+            shape=(vocab_size, n_embd),
+            init=initialize_normal(init_std),
+            dtype=dtype,
+            out_sharding=device,
         )
-        return cls(weight=jax.device_put(weight, device))
+        return cls(weight=weight)
 
     def __call__(self, x):
         return jnp.take(self.weight, x, axis=0)
@@ -168,8 +231,21 @@ class LayerNorm:
         dtype=DEFAULT_DTYPE,
     ):
         """Create a layer normalization layer from number of features"""
-        weight = jnp.ones((n_dim,), device=device, dtype=dtype)
-        bias = jnp.zeros((n_dim,), device=device, dtype=dtype) if use_bias else None
+        weight = ArrayInfo(
+            shape=(n_dim,),
+            init=initialize_ones,
+            dtype=dtype,
+            out_sharding=device,
+        )
+
+        bias = ArrayInfo(
+            shape=(n_dim,),
+            init=jax.nn.initializers.zeros,
+            dtype=dtype,
+            out_sharding=device,
+        )
+
+        bias = bias if use_bias else None
         return cls(weight=weight, bias=bias)
 
     def __call__(self, x):
@@ -237,14 +313,27 @@ class Linear:
         n_out: int,
         use_bias: bool = True,
         init_std=DEFAULT_INIT_STD,
-        rng_key=DEFAULT_RNG_KEY,
         device=DEFAULT_DEVICE,
         dtype=DEFAULT_DTYPE,
     ):
         """Create a linear layer from number of features"""
-        weight = init_std * jax.random.normal(rng_key, (n_out, n_in), dtype=dtype)
-        bias = jnp.zeros(n_out, device=device, dtype=dtype) if use_bias else None
-        return cls(weight=jax.device_put(weight, device), bias=bias)
+
+        weight = ArrayInfo(
+            shape=(n_out, n_in),
+            init=initialize_normal(init_std),
+            dtype=dtype,
+            out_sharding=device,
+        )
+
+        bias = ArrayInfo(
+            shape=(n_out,),
+            init=jax.nn.initializers.zeros,
+            dtype=dtype,
+            out_sharding=device,
+        )
+
+        bias = bias if use_bias else None
+        return cls(weight=weight, bias=bias)
 
     def __call__(self, x):
         x = jnp.matmul(x, self.weight.mT)
@@ -266,17 +355,13 @@ class MLP:
     dropout: Dropout
 
     @classmethod
-    def from_config(
-        cls, config, rng_key=DEFAULT_RNG_KEY, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
-    ):
+    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
         """Create an MLP layer from configuration"""
         kwargs = {"use_bias": config.use_bias, "device": device, "dtype": dtype}
 
-        keys = iter(jax.random.split(rng_key, 2))
         c_fc = Linear.from_n_features(
             config.n_embd,
             config.n_embd_mlp,
-            rng_key=next(keys),
             init_std=config.init_std,
             **kwargs,
         )
@@ -284,7 +369,6 @@ class MLP:
         c_proj = Linear.from_n_features(
             config.n_embd_mlp,
             config.n_embd,
-            rng_key=next(keys),
             init_std=config.init_std_c_proj,
             **kwargs,
         )
@@ -314,7 +398,7 @@ class CausalSelfAttention:
     n_head: int = field(metadata=dict(static=True))
 
     @classmethod
-    def from_config(cls, config, rng_key, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
+    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
         """Create a causal self-attention layer from configuration"""
         kwargs = {
             "use_bias": config.use_bias,
@@ -322,17 +406,14 @@ class CausalSelfAttention:
             "dtype": dtype,
             "n_in": config.n_embd,
         }
-        keys = iter(jax.random.split(rng_key, 2))
         return cls(
             c_attn=Linear.from_n_features(
                 n_out=config.n_embd_attn,
-                rng_key=next(keys),
                 init_std=config.init_std,
                 **kwargs,
             ),
             c_proj=Linear.from_n_features(
                 n_out=config.n_embd,
-                rng_key=next(keys),
                 init_std=config.init_std_c_proj,
                 **kwargs,
             ),
@@ -378,9 +459,7 @@ class Block:
     mlp: MLP
 
     @classmethod
-    def from_config(
-        cls, config, rng_key, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
-    ) -> Block:
+    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE) -> Block:
         """Create a block from configuration"""
         kwargs_norm = {
             "use_bias": config.use_bias,
@@ -388,14 +467,11 @@ class Block:
             "dtype": dtype,
             "n_dim": config.n_embd,
         }
-        keys = iter(jax.random.split(rng_key, 2))
         return cls(
             ln_1=LayerNorm.from_n_dim(**kwargs_norm),
-            attn=CausalSelfAttention.from_config(
-                config, rng_key=next(keys), device=device, dtype=dtype
-            ),
+            attn=CausalSelfAttention.from_config(config, device=device, dtype=dtype),
             ln_2=LayerNorm.from_n_dim(**kwargs_norm),
-            mlp=MLP.from_config(config, rng_key=next(keys), device=device, dtype=dtype),
+            mlp=MLP.from_config(config, device=device, dtype=dtype),
         )
 
     def __call__(self, x, rng_key, is_training) -> jax.Array:
@@ -420,7 +496,8 @@ class GPT:
     lm_head: Linear
 
     def __post_init__(self):
-        self.lm_head.weight = self.lm_head.weight.at[:].set(self.wte.weight)
+        if isinstance(self.lm_head.weight, jax.Array):
+            self.lm_head.weight = self.lm_head.weight.at[:].set(self.wte.weight)
 
     @partial(jax.jit, static_argnames=("is_training",))
     def __call__(self, idx, rng_key, is_training):
@@ -511,25 +588,20 @@ class GPT:
             "init_std": config.init_std,
             "dtype": dtype,
         }
-        keys = iter(jax.random.split(rng_key, config.n_layer + 3))
         return cls(
             wte=Embedding.from_n_features(
                 vocab_size=config.vocab_size,
                 n_embd=config.n_embd,
-                rng_key=next(keys),
                 **kwargs_emb,
             ),
             wpe=Embedding.from_n_features(
                 vocab_size=config.block_size,
                 n_embd=config.n_embd,
-                rng_key=next(keys),
                 **kwargs_emb,
             ),
             drop=Dropout(config.dropout_rate),
             h=[
-                Block.from_config(
-                    config, rng_key=next(keys), device=device, dtype=dtype
-                )
+                Block.from_config(config, device=device, dtype=dtype)
                 for _ in range(config.n_layer)
             ],
             ln_f=LayerNorm.from_n_dim(
@@ -541,7 +613,6 @@ class GPT:
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
-                rng_key=next(keys),
                 use_bias=False,
                 device=device,
                 dtype=dtype,
@@ -558,6 +629,13 @@ class GPT:
             n_parameters -= self.wte.weight.size
 
         return n_parameters
+
+    def init(self, rng_key=DEFAULT_RNG_KEY):
+        """Init arrays of the model"""
+        init_arrays = InitArrays(rng_key=rng_key)
+        return jax.tree.map(
+            init_arrays, self, is_leaf=lambda _: isinstance(_, ArrayInfo)
+        )
 
     @classmethod
     def from_pretrained(

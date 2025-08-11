@@ -475,7 +475,7 @@ if __name__ == "__main__":
         model = GPT.from_pretrained(config.init_from, **spec)
 
     model = config.training.train(
-        model=model,
+        model=model.init(config.rng_key),
         data_loader_train=data_loader_train,
         data_loader_validate=data_loader_validate,
         rng_key=config.rng_key,
