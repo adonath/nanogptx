@@ -181,6 +181,15 @@ class ArrayInfo:
             out_sharding=self.out_sharding,
         )
 
+    @classmethod
+    def from_safetensors(cls, filename, name, meta):
+        """Create array info object from safetensor file"""
+        init = initialize_from_safetensors(
+            filename=filename,
+            name=name,
+        )
+        return cls(init=init, **meta)
+
 
 @dataclass
 class InitArrays:
@@ -690,13 +699,10 @@ class GPT:
         n_head = int(metadata.get("model.n_head", GPTConfig.n_layer))
 
         for name, meta in header.items():
-            init = initialize_from_safetensors(
+            data[name] = ArrayInfo.from_safetensors(
                 filename=path,
                 name=name,
-            )
-            data[name] = ArrayInfo(
-                shape=meta["shape"],
-                init=init,
+                meta=meta,
             )
 
         dummy_model = GPT.from_config(
