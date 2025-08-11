@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import ClassVar, Literal, Optional
 
 import jax
 from jax import numpy as jnp
@@ -26,6 +26,7 @@ from utils import (
     asdict_str,
     flatten_pytree_with_path,
     join_path,
+    read_safetensors_header,
 )
 
 log = logging.getLogger(__name__)
@@ -136,6 +137,30 @@ def initialize_normal(std):
 def initialize_ones(key, shape, dtype, out_sharding):
     """Initialize zeros"""
     return jnp.ones(shape=shape, dtype=dtype, device=out_sharding)
+
+
+@dataclass
+class initialize_from_safetensors:
+    """Init from safetensors file"""
+
+    filename: str
+    name: str
+    framework: Literal["numpy", "flax", "pt"] = "numpy"
+
+    def __call__(self, key, shape, dtype, out_sharding):
+        with safe_open(self.filename, framework=self.framework) as f:
+            # TODO: use dlpack for device buffer donation
+            array = f.get_tensor(self.name)
+            array = array.astype(dtype, out_sharding)
+
+            if shape is not None and shape != array.shape:
+                message = (
+                    f"Actual shape of {self.name} {array.shape} "
+                    "does not agree with requested shape {shape}"
+                )
+                raise ValueError(message)
+
+        return array
 
 
 @dataclass(frozen=True)
@@ -662,11 +687,21 @@ class GPT:
         log.info(f"Reading model from {path}")
 
         data = {}
-        with safe_open(path, framework="numpy") as f:
-            for k in f.keys():
-                data[k] = jax.device_put(f.get_tensor(k).astype(dtype), device=device)
-                n_layer = int(f.metadata().get("model.n_layer", GPTConfig.n_head))
-                n_head = int(f.metadata().get("model.n_head", GPTConfig.n_layer))
+
+        header = read_safetensors_header(path)
+        metadata = header.pop("__metadata__")
+        n_layer = int(metadata.get("model.n_layer", GPTConfig.n_head))
+        n_head = int(metadata.get("model.n_head", GPTConfig.n_layer))
+
+        for name, meta in header.items():
+            init = initialize_from_safetensors(
+                filename=path,
+                name=name,
+            )
+            data[name] = ArrayInfo(
+                shape=meta["shape"],
+                init=init,
+            )
 
         dummy_model = GPT.from_config(
             GPTConfig.dummy(n_layer=n_layer, n_head=n_head),

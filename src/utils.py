@@ -3,6 +3,7 @@ import json
 import logging
 import random
 import string
+import struct
 from dataclasses import asdict, is_dataclass
 from functools import partial
 from pathlib import Path
@@ -21,8 +22,44 @@ KEY_SEP = "."
 
 FLOPS_UNIT = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
 
+SAFETENSOR_TO_JAX_DTYPE = {
+    "BOOL": jnp.bool_,
+    "U8": jnp.uint8,
+    "U16": jnp.uint16,
+    "U32": jnp.uint32,
+    "U64": jnp.uint64,
+    "I8": jnp.int8,
+    "I16": jnp.int16,
+    "I32": jnp.int32,
+    "I64": jnp.int64,
+    "F16": jnp.float16,
+    "F32": jnp.float32,
+    "F64": jnp.float64,
+    "BF16": jnp.bfloat16,
+    "C64": jnp.complex64,
+    "C128": jnp.complex128,
+}
+
 
 join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
+
+
+def read_safetensors_header(file_path: str) -> dict[str, tuple]:
+    """Parse safetensors header and return {tensor_name: (shape, jax_dtype)}"""
+    with open(file_path, "rb") as f:
+        header_len = struct.unpack("<Q", f.read(8))[0]
+        header = json.loads(f.read(header_len).decode("utf-8"))
+
+    for name, meta in header.items():
+        if name == "__metadata__":
+            continue
+
+        header[name] = {
+            "shape": tuple(meta["shape"]),
+            "dtype": SAFETENSOR_TO_JAX_DTYPE[meta["dtype"]],
+        }
+
+    return header
 
 
 def flatten_pytree_with_path(data):

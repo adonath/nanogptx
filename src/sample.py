@@ -6,10 +6,11 @@ import jax
 import jax.numpy as jnp
 import tiktoken
 import tyro
-from model import GPT
-from prepare import DTYPES, ENCODINGS
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
+
+from model import GPT
+from prepare import DTYPES, ENCODINGS
 from train import InitFromEnum
 from utils import (
     JAX_DEVICES,
@@ -105,7 +106,7 @@ def sample(config):
     # use num_samples as batch size
     x = jnp.repeat(x, repeats=config.num_samples, axis=0)
 
-    samples = model.generate(
+    samples = model.init().generate(
         x,
         max_new_tokens=config.max_new_tokens,
         rng_key=config.rng_key,
