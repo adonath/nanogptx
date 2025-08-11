@@ -215,7 +215,7 @@ class InitArrays:
 class Embedding:
     """Embedding layer"""
 
-    weight: jax.Array
+    weight: jax.Array | ArrayInfo
 
     @property
     def vocab_size(self):
@@ -233,15 +233,11 @@ class Embedding:
         vocab_size: int,
         n_embd: int,
         init_std=DEFAULT_INIT_STD,
-        device=DEFAULT_DEVICE,
-        dtype=DEFAULT_DTYPE,
     ):
         """Create an embedding layer from number of features"""
         weight = ArrayInfo(
             shape=(vocab_size, n_embd),
             init=initialize_normal(init_std),
-            dtype=dtype,
-            out_sharding=device,
         )
         return cls(weight=weight)
 
@@ -263,22 +259,16 @@ class LayerNorm:
         cls,
         n_dim: int,
         use_bias: bool = True,
-        device=DEFAULT_DEVICE,
-        dtype=DEFAULT_DTYPE,
     ):
         """Create a layer normalization layer from number of features"""
         weight = ArrayInfo(
             shape=(n_dim,),
             init=initialize_ones,
-            dtype=dtype,
-            out_sharding=device,
         )
 
         bias = ArrayInfo(
             shape=(n_dim,),
             init=jax.nn.initializers.zeros,
-            dtype=dtype,
-            out_sharding=device,
         )
 
         bias = bias if use_bias else None
@@ -349,23 +339,17 @@ class Linear:
         n_out: int,
         use_bias: bool = True,
         init_std=DEFAULT_INIT_STD,
-        device=DEFAULT_DEVICE,
-        dtype=DEFAULT_DTYPE,
     ):
         """Create a linear layer from number of features"""
 
         weight = ArrayInfo(
             shape=(n_out, n_in),
             init=initialize_normal(init_std),
-            dtype=dtype,
-            out_sharding=device,
         )
 
         bias = ArrayInfo(
             shape=(n_out,),
             init=jax.nn.initializers.zeros,
-            dtype=dtype,
-            out_sharding=device,
         )
 
         bias = bias if use_bias else None
@@ -391,9 +375,11 @@ class MLP:
     dropout: Dropout
 
     @classmethod
-    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
+    def from_config(cls, config):
         """Create an MLP layer from configuration"""
-        kwargs = {"use_bias": config.use_bias, "device": device, "dtype": dtype}
+        kwargs = {
+            "use_bias": config.use_bias,
+        }
 
         c_fc = Linear.from_n_features(
             config.n_embd,
@@ -434,12 +420,10 @@ class CausalSelfAttention:
     n_head: int = field(metadata=dict(static=True))
 
     @classmethod
-    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
+    def from_config(cls, config):
         """Create a causal self-attention layer from configuration"""
         kwargs = {
             "use_bias": config.use_bias,
-            "device": device,
-            "dtype": dtype,
             "n_in": config.n_embd,
         }
         return cls(
@@ -495,19 +479,17 @@ class Block:
     mlp: MLP
 
     @classmethod
-    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE) -> Block:
+    def from_config(cls, config) -> Block:
         """Create a block from configuration"""
         kwargs_norm = {
             "use_bias": config.use_bias,
-            "device": device,
-            "dtype": dtype,
             "n_dim": config.n_embd,
         }
         return cls(
             ln_1=LayerNorm.from_n_dim(**kwargs_norm),
-            attn=CausalSelfAttention.from_config(config, device=device, dtype=dtype),
+            attn=CausalSelfAttention.from_config(config),
             ln_2=LayerNorm.from_n_dim(**kwargs_norm),
-            mlp=MLP.from_config(config, device=device, dtype=dtype),
+            mlp=MLP.from_config(config),
         )
 
     def __call__(self, x, rng_key, is_training) -> jax.Array:
@@ -615,12 +597,10 @@ class GPT:
         )
 
     @classmethod
-    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
+    def from_config(cls, config):
         """Create a GPT model from configuration"""
         kwargs_emb = {
-            "device": device,
             "init_std": config.init_std,
-            "dtype": dtype,
         }
         return cls(
             wte=Embedding.from_n_features(
@@ -634,22 +614,15 @@ class GPT:
                 **kwargs_emb,
             ),
             drop=Dropout(config.dropout_rate),
-            h=[
-                Block.from_config(config, device=device, dtype=dtype)
-                for _ in range(config.n_layer)
-            ],
+            h=[Block.from_config(config) for _ in range(config.n_layer)],
             ln_f=LayerNorm.from_n_dim(
                 n_dim=config.n_embd,
                 use_bias=config.use_bias,
-                device=device,
-                dtype=dtype,
             ),
             lm_head=Linear.from_n_features(
                 config.n_embd,
                 config.vocab_size,
                 use_bias=False,
-                device=device,
-                dtype=dtype,
             ),
         )
 
