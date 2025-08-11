@@ -156,7 +156,7 @@ class initialize_from_safetensors:
             if shape is not None and shape != array.shape:
                 message = (
                     f"Actual shape of {self.name} {array.shape} "
-                    "does not agree with requested shape {shape}"
+                    f"does not agree with requested shape {shape}"
                 )
                 raise ValueError(message)
 
@@ -604,9 +604,7 @@ class GPT:
         )
 
     @classmethod
-    def from_config(
-        cls, config, rng_key=DEFAULT_RNG_KEY, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
-    ):
+    def from_config(cls, config, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE):
         """Create a GPT model from configuration"""
         kwargs_emb = {
             "device": device,
@@ -678,9 +676,7 @@ class GPT:
         return cls.read(path, device=device, dtype=dtype)
 
     @classmethod
-    def read(
-        cls, path, transpose_weights=True, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE
-    ) -> GPT:
+    def read(cls, path, transpose_weights=True) -> GPT:
         """Read model from safetensors file"""
         # create a dummy model to get the equivalent PyTree structure, this is
         # not nice, but JAX would need to allow generating a PyTree structure from a static definition.
