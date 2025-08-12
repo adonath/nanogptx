@@ -163,6 +163,7 @@ class initialize_from_safetensors:
         return array
 
 
+@tree_util.register_static
 @dataclass
 class ArrayInfo:
     """Array info, somewhat inspired from jax-llm-examples"""
@@ -756,3 +757,19 @@ class GPT:
         idxs = jnp.arange(n_tokens, n_tokens + max_new_tokens)
         _, next_tokens = jax.lax.scan(sample, tokens, idxs)
         return next_tokens.T
+
+
+def abstract_call(model, x, is_training=True):
+    """Call model evaluating shapes, dtypes and shardings"""
+
+    def info_to_struct(info):
+        return jax.ShapeDtypeStruct(info.shape, info.dtype, sharding=info.out_sharding)
+
+    model = jax.tree.map(
+        info_to_struct, model, is_leaf=lambda _: isinstance(_, ArrayInfo)
+    )
+
+    def f(x):
+        return model(x, rng_key=jax.random.key(923), is_training=is_training)
+
+    return jax.eval_shape(f, x)
