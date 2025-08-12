@@ -114,9 +114,7 @@ def sample(config):
     )
 
     for sample in samples:
-        time.sleep(
-            0.1
-        )  # Sleep that it looks a bit more like the model generating output
+        time.sleep(0.1)
         print(encoding.decode(sample.tolist()))
         print("---------------")
 

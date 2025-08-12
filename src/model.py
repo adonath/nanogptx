@@ -92,7 +92,7 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
-    use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
+    use_bias: bool = False  # do we use bias inside LayerNorm and Linear layers?
     init_std: float = DEFAULT_INIT_STD
 
     @property
@@ -135,8 +135,13 @@ def initialize_normal(std):
 
 
 def initialize_ones(key, shape, dtype, out_sharding):
-    """Initialize zeros"""
+    """Initialize ones"""
     return jnp.ones(shape=shape, dtype=dtype, device=out_sharding)
+
+
+def initialize_zeros(key, shape, dtype, out_sharding):
+    """Initialize ones"""
+    return jnp.zeros(shape=shape, dtype=dtype, device=out_sharding)
 
 
 @dataclass
@@ -163,7 +168,6 @@ class initialize_from_safetensors:
         return array
 
 
-@tree_util.register_static
 @dataclass
 class ArrayInfo:
     """Array info, somewhat inspired from jax-llm-examples"""
@@ -172,7 +176,7 @@ class ArrayInfo:
     init: Callable | None = None
     dtype: AvailableJaxDtypes = DEFAULT_DTYPE
     out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
-    hook: Callable = lambda _: _
+    post_init: Callable = lambda _: _
 
     def to_value(self, rng_key, dtype=None, device=None):
         """Initialize to value"""
@@ -182,7 +186,7 @@ class ArrayInfo:
             dtype=self.dtype if dtype is None else dtype,
             out_sharding=self.out_sharding,
         )
-        return self.hook(result)
+        return self.post_init(result)
 
     @classmethod
     def from_safetensors(cls, filename, name, meta):
@@ -271,7 +275,7 @@ class LayerNorm:
 
         bias = ArrayInfo(
             shape=(n_dim,),
-            init=jax.nn.initializers.zeros,
+            init=initialize_zeros,
         )
 
         bias = bias if use_bias else None
@@ -352,7 +356,7 @@ class Linear:
 
         bias = ArrayInfo(
             shape=(n_out,),
-            init=jax.nn.initializers.zeros,
+            init=initialize_zeros,
         )
 
         bias = bias if use_bias else None
@@ -672,12 +676,22 @@ class GPT:
         header = read_safetensors_header(path)
         metadata = header.pop("__metadata__")
 
+        transposed = [
+            "attn.c_attn.weight",
+            "attn.c_proj.weight",
+            "mlp.c_fc.weight",
+            "mlp.c_proj.weight",
+        ]
+
         for name, meta in header.items():
             array_infos[name] = ArrayInfo.from_safetensors(
                 filename=path,
                 name=name,
                 meta=meta,
             )
+
+            if any(name.endswith(_) for _ in transposed) and transpose_weights:
+                array_infos[name].post_init = jnp.matrix_transpose
 
         # tied parameters are missing, just create a reference as placeholder
         array_infos["lm_head.weight"] = array_infos["wte.weight"]
@@ -687,28 +701,18 @@ class GPT:
             n_head=int(metadata.get("model.n_head", GPTConfig.n_head)),
         )
 
-        dummy_model = GPT.from_config(config)
-        paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
-        array_infos_model = {join_path(path): value for path, value in paths}
+        model = GPT.from_config(config)
 
-        transposed = [
-            "attn.c_attn.weight",
-            "attn.c_proj.weight",
-            "mlp.c_fc.weight",
-            "mlp.c_proj.weight",
-        ]
+        def set_array_infos(path, _):
+            key = join_path(path)
+            info = array_infos.get(key)
 
-        for key in array_infos_model:
-            array = array_infos.get(key)
-            if array is None:
+            if info is None:
                 log.debug(f"No tensor found for {key}, setting to `None`")
 
-            array_infos_model[key] = array
+            return info
 
-            if any(key.endswith(_) for _ in transposed) and transpose_weights:
-                array_infos_model[key].hook = jnp.matrix_transpose
-
-        return tree_util.tree_unflatten(treedef, array_infos_model.values())
+        return tree_util.tree_map_with_path(set_array_infos, model)
 
     def write(self, path, metadata=None):
         """Write model to safetensors file"""
