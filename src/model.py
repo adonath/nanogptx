@@ -163,7 +163,7 @@ class initialize_from_safetensors:
         return array
 
 
-@dataclass(frozen=True)
+@dataclass
 class ArrayInfo:
     """Array info, somewhat inspired from jax-llm-examples"""
 
@@ -171,15 +171,17 @@ class ArrayInfo:
     init: Callable | None = None
     dtype: AvailableJaxDtypes = DEFAULT_DTYPE
     out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
+    hook: Callable = lambda _: _
 
     def to_value(self, rng_key, dtype=None, device=None):
         """Initialize to value"""
-        return self.init(
+        result = self.init(
             key=rng_key,
             shape=self.shape if device is None else device,
             dtype=self.dtype if dtype is None else dtype,
             out_sharding=self.out_sharding,
         )
+        return self.hook(result)
 
     @classmethod
     def from_safetensors(cls, filename, name, meta):
@@ -664,28 +666,29 @@ class GPT:
         # not nice, but JAX would need to allow generating a PyTree structure from a static definition.
         log.info(f"Reading model from {path}")
 
-        data = {}
+        array_infos = {}
 
         header = read_safetensors_header(path)
         metadata = header.pop("__metadata__")
-        n_layer = int(metadata.get("model.n_layer", GPTConfig.n_head))
-        n_head = int(metadata.get("model.n_head", GPTConfig.n_layer))
 
         for name, meta in header.items():
-            data[name] = ArrayInfo.from_safetensors(
+            array_infos[name] = ArrayInfo.from_safetensors(
                 filename=path,
                 name=name,
                 meta=meta,
             )
 
-        dummy_model = GPT.from_config(
-            GPTConfig.dummy(n_layer=n_layer, n_head=n_head),
-        )
-        paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
-        data_model = {join_path(path): value for path, value in paths}
-
         # tied parameters are missing, just create a reference as placeholder
-        data["lm_head.weight"] = data["wte.weight"]
+        array_infos["lm_head.weight"] = array_infos["wte.weight"]
+
+        config = GPTConfig.dummy(
+            n_layer=int(metadata.get("model.n_layer", GPTConfig.n_layer)),
+            n_head=int(metadata.get("model.n_head", GPTConfig.n_head)),
+        )
+
+        dummy_model = GPT.from_config(config)
+        paths, treedef = tree_util.tree_flatten_with_path(dummy_model)
+        array_infos_model = {join_path(path): value for path, value in paths}
 
         transposed = [
             "attn.c_attn.weight",
@@ -694,17 +697,17 @@ class GPT:
             "mlp.c_proj.weight",
         ]
 
-        for key in data_model:
-            array = data.get(key)
+        for key in array_infos_model:
+            array = array_infos.get(key)
             if array is None:
                 log.debug(f"No tensor found for {key}, setting to `None`")
 
-            data_model[key] = array
+            array_infos_model[key] = array
 
             if any(key.endswith(_) for _ in transposed) and transpose_weights:
-                data_model[key] = data_model[key].T
+                array_infos_model[key].hook = jnp.matrix_transpose
 
-        return tree_util.tree_unflatten(treedef, data_model.values())
+        return tree_util.tree_unflatten(treedef, array_infos_model.values())
 
     def write(self, path, metadata=None):
         """Write model to safetensors file"""
