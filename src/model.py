@@ -25,6 +25,7 @@ from utils import (
     asdict_str,
     flatten_pytree_with_path,
     read_safetensors_header,
+    sizeof_fmt,
     update_leave_from_mapping,
 )
 
@@ -177,6 +178,16 @@ class ArrayInfo:
     dtype: AvailableJaxDtypes = DEFAULT_DTYPE
     out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
     post_init: Callable = lambda _: _
+
+    @property
+    def size(self):
+        """Array size in number of entries"""
+        return math.prod(self.shape)
+
+    @property
+    def nbytes(self):
+        """Size in number of bytes"""
+        return self.size * jnp.dtype(self.dtype).itemsize
 
     def to_value(self, rng_key, dtype=None, device=None):
         """Initialize to value"""
@@ -508,6 +519,17 @@ class Block:
 Flops = namedtuple("Flops", ["per_token", "per_iter", "per_fwdbwd"])
 
 
+@dataclass
+class GPTInfo:
+    """GPT info"""
+
+    n_parameters: int
+    n_bytes: int
+
+    def __str__(self):
+        return f"GPT Model: {sizeof_fmt(self.n_parameters, system="decimal")} parameters | {sizeof_fmt(self.n_bytes)}"
+
+
 @tree_util.register_dataclass
 @dataclass
 class GPT:
@@ -603,6 +625,24 @@ class GPT:
             per_iter=flops_per_iter,
         )
 
+    def info(self, non_embedding=True):
+        """Number of parameters"""
+
+        def add_size(a, b, name="size"):
+            return getattr(a, name, a) + getattr(b, name, b)
+
+        n_parameters = jax.tree.reduce(add_size, self)
+        n_bytes = jax.tree.reduce(partial(add_size, name="nbytes"), self)
+
+        if non_embedding:
+            n_parameters -= self.wte.weight.size
+            n_bytes -= self.wte.weight.nbytes
+
+        return GPTInfo(
+            n_parameters=n_parameters,
+            n_bytes=n_bytes,
+        )
+
     @classmethod
     def from_config(cls, config):
         """Create a GPT model from configuration"""
@@ -632,17 +672,6 @@ class GPT:
                 use_bias=False,
             ),
         )
-
-    def n_parameters(self, non_embedding=True):
-        """Number of parameters"""
-        n_parameters = sum(
-            p.size if isinstance(p, jax.Array) else 0 for p in jax.tree.leaves(self)
-        )
-
-        if non_embedding:
-            n_parameters -= self.wte.weight.size
-
-        return n_parameters
 
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=DEFAULT_DTYPE, device=DEFAULT_DEVICE):
         """Init arrays of the model"""

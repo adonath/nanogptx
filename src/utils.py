@@ -172,3 +172,27 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
         return info
 
     return update
+
+
+def sizeof_fmt(num, system="binary"):
+    """Human readable version of a bytes number"""
+    choice = {
+        "binary": (("B", "KiB", "MiB", "GiB", "TiB"), 1024.0),
+        "decimal": (
+            (
+                "K",
+                "M",
+                "B",
+            ),
+            1000.0,
+        ),
+    }
+
+    units, divisor = choice[system]
+
+    for unit in units[:-1]:
+        if abs(num) < divisor:
+            return f"{num:3.1f} {unit}"
+        num /= divisor
+
+    return f"{num:.1f} {units[-1]}"
