@@ -1,12 +1,13 @@
 import logging
 import os
 import time
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 import tiktoken
 import tyro
-from pydantic.dataclasses import dataclass as pydantic_dataclass
+from jax import tree_util
 from safetensors import safe_open
 
 from model import GPT
@@ -26,7 +27,8 @@ PREFIX = "FILE:"
 log = logging.getLogger(__file__)
 
 
-@pydantic_dataclass(kw_only=True)
+@tree_util.register_dataclass
+@dataclass
 class SampleConfig:
     """Sampling configuration"""
 

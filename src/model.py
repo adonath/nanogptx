@@ -15,7 +15,6 @@ from typing import ClassVar, Literal, Optional
 import jax
 from jax import numpy as jnp
 from jax import tree_util
-from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from safetensors.flax import save_file
 
@@ -25,8 +24,8 @@ from utils import (
     AvailableJaxDtypes,
     asdict_str,
     flatten_pytree_with_path,
-    join_path,
     read_safetensors_header,
+    update_leave_from_mapping,
 )
 
 log = logging.getLogger(__name__)
@@ -82,7 +81,8 @@ class EmbeddingAxis(int, Enum):
     embd = 1
 
 
-@pydantic_dataclass(kw_only=True)
+@tree_util.register_dataclass
+@dataclass
 class GPTConfig:
     """Model configuration"""
 
@@ -703,16 +703,9 @@ class GPT:
 
         model = GPT.from_config(config)
 
-        def set_array_infos(path, _):
-            key = join_path(path)
-            info = array_infos.get(key)
-
-            if info is None:
-                log.debug(f"No tensor found for {key}, setting to `None`")
-
-            return info
-
-        return tree_util.tree_map_with_path(set_array_infos, model)
+        return tree_util.tree_map_with_path(
+            update_leave_from_mapping(array_infos, use_default_if_missing=False), model
+        )
 
     def write(self, path, metadata=None):
         """Write model to safetensors file"""

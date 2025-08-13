@@ -157,3 +157,18 @@ def get_random_name():
     adjectives = data[letter]["adjectives"]
 
     return f"{random.choice(adjectives)}-{random.choice(animals)}".lower()
+
+
+def update_leave_from_mapping(mapping, use_default_if_missing=False):
+    """Update a PyTree leave from a mapping dict[path, value]"""
+
+    def update(path, leave):
+        key = join_path(path)
+        info = mapping.get(key, leave if use_default_if_missing else None)
+
+        if info is None:
+            log.debug(f"No value found for `{key}`, setting to `{info}`")
+
+        return info
+
+    return update

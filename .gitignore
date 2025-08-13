@@ -5,3 +5,4 @@ __pycache__/
 .pixi
 .jax_cache
 wandb
+*.ipynb

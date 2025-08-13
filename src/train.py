@@ -5,7 +5,7 @@ import os
 import time
 from collections import namedtuple
 from collections.abc import Sequence
-from dataclasses import asdict, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
 from typing import Literal
 
@@ -15,9 +15,8 @@ import optax
 import tomli_w
 import tomllib
 import tyro
+from jax import tree_util
 from jax.sharding import NamedSharding, PartitionSpec
-from pydantic import ConfigDict, ValidationError
-from pydantic.dataclasses import dataclass as pydantic_dataclass
 from safetensors import safe_open
 from tqdm import tqdm
 
@@ -35,7 +34,7 @@ from utils import (
     flatten_pytree_with_path,
     get_checksum,
     get_random_name,
-    join_path,
+    update_leave_from_mapping,
 )
 
 TAB_WIDTH = 4
@@ -49,14 +48,10 @@ InitFromEnum = enum.StrEnum(
     | {"scratch": "scratch", "resume": "resume"},
 )
 
-PYDANTIC_CONFIG = ConfigDict(
-    use_enum_values=True,
-    extra="forbid",
-)
-
 
 # fmt: off
-@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
+@tree_util.register_dataclass
+@dataclass
 class WAndBConfig:
     """WAndB logging"""
 
@@ -65,7 +60,8 @@ class WAndBConfig:
     wandb_run_name: str = field(default_factory=get_random_name)
 
 
-@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
+@tree_util.register_dataclass
+@dataclass
 class OptimizerConfig:
     """Optimizer configuration"""
 
@@ -112,7 +108,8 @@ class OptimizerConfig:
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
-@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
+@tree_util.register_dataclass
+@dataclass
 class DatasetLoader:
     """Dataset loading"""
 
@@ -224,7 +221,8 @@ class DatasetLoader:
                 )
 
 
-@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
+@tree_util.register_dataclass
+@dataclass
 class Trainer:
     """Training configuration"""
 
@@ -319,7 +317,8 @@ class Trainer:
         return model
 
 
-@pydantic_dataclass(kw_only=True, config=PYDANTIC_CONFIG)
+@tree_util.register_dataclass
+@dataclass
 class Config:
     """General config"""
 
@@ -392,22 +391,18 @@ class Config:
                 return cls.from_safetensors_meta(f.metadata())
 
         with path.open("rb") as f:
-            data = tomllib.load(f)
+            data = flatten_pytree_with_path(tomllib.load(f))
 
-        return cls(**data)
+        return jax.tree.map_with_path(
+            update_leave_from_mapping(data, use_default_if_missing=True), cls()
+        )
 
     @classmethod
     def from_safetensors_meta(cls, data):
         """Re-create config from safetensors meta"""
-        values_and_path, treedef = jax.tree.flatten_with_path(asdict(cls()))
-
-        # safetensors does no preserve the order of the entries...
-        values = []
-        for path, _ in values_and_path:
-            values.append(data[join_path(path)])
-
-        data = jax.tree.unflatten(treedef, values)
-        return cls(**data)
+        return jax.tree.map_with_path(
+            update_leave_from_mapping(data, use_default_if_missing=True), cls()
+        )
 
     def to_safetensors_meta(self):
         """Create safetensors meta"""
@@ -434,13 +429,10 @@ def get_configs():
 
     # TODO: parse desription from the first line of the toml file
     for filename in filenames:
-        try:
-            configs[filename.stem] = (
-                f"Default configuration from {filename.name}",
-                Config.read(filename),
-            )
-        except (ValidationError, ValueError) as e:
-            log.warning(f"Invalid default configuration in {filename}, {repr(e)}")
+        configs[filename.stem] = (
+            f"Default configuration from {filename.name}",
+            Config.read(filename),
+        )
 
     return configs
 
