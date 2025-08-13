@@ -461,21 +461,21 @@ if __name__ == "__main__":
     data_loader_validate = config.data_val
     log.info(f"Validation dataset has {data_loader_validate.n_tokens_total} tokens.")
 
-    spec = {"device": config.sharding_replicated, "dtype": config.dtype_jax}
-
     config.model.vocab_size = config.data.n_vocab
 
     if config.init_from == InitFromEnum.scratch:
-        model = GPT.from_config(config.model, rng_key=config.rng_key, **spec)
+        model = GPT.from_config(config.model)
     elif config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
         latest = max(candidates, key=os.path.getctime)
-        model = GPT.read(latest, **spec)
+        model = GPT.read(latest)
     else:
-        model = GPT.from_pretrained(config.init_from, **spec)
+        model = GPT.from_pretrained(config.init_from)
+
+    spec = {"device": config.sharding_replicated, "dtype": config.dtype_jax}
 
     model = config.training.train(
-        model=model.init(config.rng_key),
+        model=model.init(rng_key=config.rng_key, **spec),
         data_loader_train=data_loader_train,
         data_loader_validate=data_loader_validate,
         rng_key=config.rng_key,
