@@ -588,13 +588,13 @@ class GPT:
             compiled = jax.jit(f).trace(x).lower().compile()
             return compiled.cost_analysis()["flops"]
 
-        x = jax.numpy.zeros((1, 1), dtype=dtype)
+        x = jax.ShapeDtypeStruct((1, 1), dtype=dtype)
         flops_per_token = get_flops(x)
 
-        x = jax.numpy.zeros((1, self.block_size), dtype=dtype)
+        x = jax.ShapeDtypeStruct((1, self.block_size), dtype=dtype)
         flops_per_fwdbwd = get_flops(x)
 
-        x = jax.numpy.zeros((batch_size, self.block_size), dtype=dtype)
+        x = jax.ShapeDtypeStruct((batch_size, self.block_size), dtype=dtype)
         flops_per_iter = get_flops(x)
 
         return Flops(
@@ -646,6 +646,7 @@ class GPT:
 
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=DEFAULT_DTYPE, device=DEFAULT_DEVICE):
         """Init arrays of the model"""
+        # TODO: do an abstract evaluation of the shape, dtypes and shardings here?
         init_arrays = InitArrays(rng_key=rng_key, dtype=dtype, device=device)
         return jax.tree.map(
             init_arrays, self, is_leaf=lambda _: isinstance(_, ArrayInfo)
