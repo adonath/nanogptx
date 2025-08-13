@@ -4,7 +4,6 @@ import logging
 import random
 import string
 import struct
-from dataclasses import asdict, is_dataclass
 from functools import partial
 from pathlib import Path
 from typing import Literal
@@ -62,19 +61,10 @@ def read_safetensors_header(file_path: str) -> dict[str, tuple]:
     return header
 
 
-def flatten_pytree_with_path(data):
+def flatten_pytree_with_path(data, parse_type=lambda _: _):
     """Flatten a dict"""
     values, _ = jax.tree.flatten_with_path(data)
-    return {join_path(path): value for path, value in values}
-
-
-def asdict_str(data):
-    """Return a dict with str values"""
-
-    if is_dataclass(data):
-        data = asdict(data)
-
-    return {key: str(value) for key, value in data.items()}
+    return {join_path(path): parse_type(value) for path, value in values}
 
 
 def get_checksum(array):
@@ -160,7 +150,7 @@ def get_random_name():
 
 
 def update_leave_from_mapping(mapping, use_default_if_missing=False):
-    """Update a PyTree leave from a mapping dict[path, value]"""
+    """Update a PyTree leave from a mapping dict[path, value] and coerce to the leave type"""
 
     def update(path, leave):
         key = join_path(path)
@@ -169,24 +159,19 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
         if info is None:
             log.debug(f"No value found for `{key}`, setting to `{info}`")
 
-        return info
+        return type(leave)(info)
 
     return update
 
 
 def sizeof_fmt(num, system="binary"):
     """Human readable version of a bytes number"""
+    # fmt: off
     choice = {
         "binary": (("B", "KiB", "MiB", "GiB", "TiB"), 1024.0),
-        "decimal": (
-            (
-                "K",
-                "M",
-                "B",
-            ),
-            1000.0,
-        ),
+        "decimal": (("K", "M", "B",), 1000.0)
     }
+    # fmt: on
 
     units, divisor = choice[system]
 

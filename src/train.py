@@ -30,7 +30,6 @@ from utils import (
     PATH_DATA,
     AvailableJaxDevices,
     AvailableJaxDtypes,
-    asdict_str,
     flatten_pytree_with_path,
     get_checksum,
     get_random_name,
@@ -406,8 +405,8 @@ class Config:
 
     def to_safetensors_meta(self):
         """Create safetensors meta"""
-        data = flatten_pytree_with_path(asdict(self))
-        return asdict_str(data)
+        data = flatten_pytree_with_path(asdict(self), parse_type=str)
+        return data
 
     def write(self, path: str):
         """Write configuration to file"""
@@ -464,6 +463,7 @@ if __name__ == "__main__":
     else:
         model = GPT.from_pretrained(config.init_from)
 
+    log.info(f"{model.info()}")
     spec = {"device": config.sharding_replicated, "dtype": config.dtype_jax}
 
     model = config.training.train(

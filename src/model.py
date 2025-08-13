@@ -22,7 +22,6 @@ from utils import (
     PATH_DATA,
     AvailableJaxDevices,
     AvailableJaxDtypes,
-    asdict_str,
     flatten_pytree_with_path,
     read_safetensors_header,
     sizeof_fmt,
@@ -742,7 +741,7 @@ class GPT:
         data = flatten_pytree_with_path(self)
 
         if metadata is None:
-            metadata = asdict_str(self.to_config())
+            metadata = flatten_pytree_with_path(self.to_config(), parse_type=str)
 
         log.info(f"Writing model to {path}")
         save_file(data, path, metadata=metadata)
