@@ -38,6 +38,7 @@ Here are some of the features of this implementation:
 - **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets etc.
 - **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
 - **Sharding strategies**: TODO: support for configurable sharding strategies.
+- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and document cleaning.
 
 
 ## Acknowledgements
