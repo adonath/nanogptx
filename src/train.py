@@ -56,6 +56,7 @@ class WAndBConfig:
     wandb_log: bool = False  # disabled by default
     wandb_project: str = "nanogptx"
     wandb_run_name: str = field(default_factory=get_random_name)
+    wandb_tags: list[str] = field(default_factory=list)
 
 
 @tree_util.register_dataclass
@@ -465,6 +466,7 @@ if __name__ == "__main__":
         run = wandb.init(
             project=config.logging.wandb_project,
             name=config.logging.wandb_run_name,
+            tags=config.logging.wandb_tags,
             config=asdict(config),
         )
 
