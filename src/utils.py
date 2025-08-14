@@ -164,8 +164,14 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
             log.debug(f"No value found for `{key}`, setting to `{info}`")
             return None
 
+        try:
+            value = type(leave)(info)
+        except ValueError as e:
+            message = f"Failed parsing `{info}` as `{type(leave)}` at path `{key}`, {e}"
+            raise ValueError(message)
+
         # this requires the leave to be callable...
-        return type(leave)(info)
+        return value
 
     return update
 

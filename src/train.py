@@ -321,7 +321,7 @@ class Config:
     """General config"""
 
     # TODO: add name and project?
-    init_from: InitFromEnum | str = InitFromEnum.scratch
+    init_from: InitFromEnum = InitFromEnum.scratch
     seed: int = 9283  # Random seed
     devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
     dtype: JaxDtypesEnum = JaxDtypesEnum.float32
