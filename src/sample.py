@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import jax
 import jax.numpy as jnp
@@ -27,44 +27,18 @@ log = logging.getLogger(__file__)
 
 @tree_util.register_dataclass
 @dataclass
-class SampleConfig:
-    """Sampling configuration"""
+class TokenSampler:
+    """Token sampler"""
 
-    init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
-    start: str = (
-        ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
-    )
     num_samples: int = 10  # Number of samples to draw
     max_new_tokens: int = 500  # Number of tokens generated in each sample
     temperature: float = 0.8  # Sampling temperature (1.0 = no change, < 1.0 = less random, > 1.0 = more random)
     top_k: int = 200  # Retain only the top_k most likely tokens, clamp others to have 0 probability
-    seed: int = 9283  # Random seed
-    device: JaxDevicesEnum = DEFAULT_DEVICE
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
-    _key = None
 
-    @property
-    def device_jax(self):
-        """Return actual device"""
-        return self.device.jax
-
-    @property
-    def rng_key(self) -> jax.Array:
-        """Generate random key for initialization"""
-        return jax.random.PRNGKey(self.seed)
-
-    @property
-    def prompt(self):
-        """Prompt"""
-        if self.start.startswith(PREFIX):
-            with open(self.start[len(PREFIX) :], "r", encoding="utf-8") as f:
-                return f.read()
-        return self.start
-
-    def generate(self, model, tokens):
+    def generate(self, model, tokens, rng_key):
         """Generate new tokens"""
         top_k = (
-            min(self.top_k, model.wte.vocab_size) if self.top_k is not None else None
+            min(self.top_k, model.config.vocab_size) if self.top_k is not None else None
         )
 
         n_tokens = tokens.shape[Axis.sequence]
@@ -73,9 +47,12 @@ class SampleConfig:
 
         def sample(context, idx):
             context_window = jax.lax.dynamic_slice_in_dim(
-                context, idx - model.block_size, model.block_size, axis=Axis.sequence
+                context,
+                idx - model.config.block_size,
+                model.config.block_size,
+                axis=Axis.sequence,
             )
-            logits = model(context_window, rng_key=self.rng_key, is_training=False)
+            logits = model(context_window, rng_key=rng_key, is_training=False)
             logits = logits[:, -1:, :] / self.temperature
 
             if top_k is not None:
@@ -86,7 +63,7 @@ class SampleConfig:
             probs = jax.nn.softmax(values, axis=Axis.feature)
 
             keys = jax.random.split(
-                jax.random.fold_in(self.rng_key, idx), context.shape[Axis.batch]
+                jax.random.fold_in(rng_key, idx), context.shape[Axis.batch]
             )
             next_token = jax.vmap(jax.random.choice)(
                 keys,
@@ -100,6 +77,34 @@ class SampleConfig:
         idxs = jnp.arange(n_tokens, n_tokens + self.max_new_tokens)
         _, next_tokens = jax.lax.scan(sample, tokens, idxs)
         return next_tokens.T
+
+
+# fmt: off
+@tree_util.register_dataclass
+@dataclass
+class SampleConfig:
+    """Sampling configuration"""
+
+    init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
+    start: str = ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
+    device: JaxDevicesEnum = DEFAULT_DEVICE
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    seed: int = 9283  # Random seed
+    sampler: TokenSampler = field(default_factory=TokenSampler)
+
+    @property
+    def rng_key(self) -> jax.Array:
+        """Generate random key for initialization"""
+        return jax.random.key(self.seed)
+
+    @property
+    def prompt(self):
+        """Prompt"""
+        if self.start.startswith(PREFIX):
+            with open(self.start[len(PREFIX) :], "r", encoding="utf-8") as f:
+                return f.read()
+        return self.start
+# fmt: on
 
 
 def sample(config):
@@ -123,22 +128,20 @@ def sample(config):
 
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
-        device=config.device_jax,
+        device=config.device.jax,
         dtype=DTYPES[encoding.name],
     )[None, ...]
 
     # use num_samples as batch size
-    x = jnp.repeat(x, repeats=config.num_samples, axis=0)
+    x = jnp.repeat(x, repeats=config.sampler.num_samples, axis=0)
 
-    samples = model.init(
-        device=config.device_jax,
-        dtype=config.dtype.jax,
-    ).generate(
-        x,
-        max_new_tokens=config.max_new_tokens,
+    samples = config.sampler.generate(
+        model=model.init(
+            device=config.device.jax,
+            dtype=config.dtype.jax,
+        ),
+        tokens=x,
         rng_key=config.rng_key,
-        temperature=config.temperature,
-        top_k=config.top_k,
     )
 
     for sample in samples:
@@ -154,7 +157,7 @@ if __name__ == "__main__":
     sample(config=config)
     end_time = time.time()
 
-    tokens_per_second = (config.num_samples * config.max_new_tokens) / (
+    tokens_per_second = (config.sampler.num_samples * config.sampler.max_new_tokens) / (
         end_time - start_time
     )
     log.info(f"Sampled at {tokens_per_second:.2f} TPS")

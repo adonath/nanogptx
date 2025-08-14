@@ -567,31 +567,12 @@ class GPT:
         return logits
 
     @property
-    def n_layer(self):
-        """Number of layers"""
-        return len(self.h)
-
-    @property
-    def n_head(self):
-        """Number of heads"""
-        return self.h[0].attn.n_head
-
-    @property
-    def n_embd(self):
-        """Embd dim"""
-        return self.wte.n_embd
-
-    @property
-    def block_size(self):
-        """Block size"""
-        return self.wpe.vocab_size
-
-    def to_config(self):
+    def config(self):
         """Return configuration for the current model"""
         return GPTConfig(
-            block_size=self.block_size,
+            block_size=self.wpe.vocab_size,
             vocab_size=self.wte.vocab_size,
-            n_layer=self.n_layer,
+            n_layer=len(self.h),
             n_head=self.h[0].attn.n_head,
             n_embd=self.wte.n_embd,
             dropout_rate=self.drop.rate,
@@ -740,7 +721,7 @@ class GPT:
         data = flatten_pytree_with_path(self)
 
         if metadata is None:
-            metadata = flatten_pytree_with_path(self.to_config(), parse_type=str)
+            metadata = flatten_pytree_with_path(self.config, parse_type=str)
 
         log.info(f"Writing model to {path}")
         save_file(data, path, metadata=metadata)
