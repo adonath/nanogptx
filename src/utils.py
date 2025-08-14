@@ -100,7 +100,7 @@ def get_jax_devices():
 
 
 JAX_DEVICES = get_jax_devices()
-JaxDevicesEnum = StrEnum("JaxDtypesEnum", list(JAX_DEVICES))
+JaxDevicesEnum = StrEnum("JaxDevicesEnum", list(JAX_DEVICES))
 JaxDevicesEnum.jax = property(lambda self: JAX_DEVICES[self.name])
 
 

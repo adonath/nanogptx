@@ -16,6 +16,7 @@ import tiktoken
 import tyro
 from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
+
 from utils import get_checksum
 
 log = logging.getLogger(__file__)

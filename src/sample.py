@@ -121,7 +121,7 @@ def sample(config):
             from train import Config
 
             config_all = Config.from_safetensors_meta(f.metadata())
-            encoding = ENCODINGS[config_all.data.encoding]
+            encoding = ENCODINGS[config_all.loading.index.encoding]
     else:
         encoding = tiktoken.get_encoding("gpt2")
         model = GPT.from_pretrained(config.init_from)

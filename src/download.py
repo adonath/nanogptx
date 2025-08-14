@@ -7,6 +7,7 @@ from pathlib import Path
 
 import requests
 import tyro
+
 from model import PretrainedModels
 from prepare import DatasetEnum
 

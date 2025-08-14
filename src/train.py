@@ -107,38 +107,13 @@ Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
 
 
 @tree_util.register_dataclass
-@dataclass
-class DatasetLoader:
-    """Dataset loading"""
+@dataclass(frozen=True)
+class DatasetIndex:
+    """Dataset index"""
 
-    batch_size: int = 16
-    block_size: int = 1024
-    verify: bool = True
     dataset: DatasetEnum = DatasetEnum.openwebtext
     encoding: EncodingEnum = EncodingEnum.gpt2
-    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
-    seed: int = 8273
-    dtype: JaxDtypesEnum = JaxDtypesEnum.int32
     suffix: Literal["train", "val"] = "train"
-
-    @property
-    def mesh_jax(self):
-        """Mesh over the batch axis for distributed parallel data training"""
-        return jax.make_mesh(
-            axis_shapes=(len(self.devices),),
-            axis_names=("batch",),
-            devices=self.devices_jax,
-        )
-
-    @property
-    def devices_jax(self):
-        """Return actual device"""
-        return [_.jax for _ in self.devices]
-
-    @property
-    def sharding_batch(self):
-        """Batch sharding"""
-        return NamedSharding(self.mesh_jax, PartitionSpec(*self.mesh_jax.axis_names))
 
     @property
     def path(self):
@@ -165,19 +140,69 @@ class DatasetLoader:
         return data
 
     @property
+    def stats(self):
+        """Token sttats"""
+        return self._index[f"token-stats-{self.suffix}"]
+
+    @property
     def n_vocab(self):
         """Vocab size"""
-        return len(self._index[f"token-stats-{self.suffix}"])
+        return len(self.stats)
 
     @property
     def n_tokens_total(self):
         """N tokens"""
-        return self._index[f"n-tokens-{self.suffix}"]
+        return np.sum(self.stats)
 
     @property
     def filenames(self):
         """Filenames anc checksums"""
         return self._index[f"shards-{self.suffix}"]
+
+    @property
+    def filenames_absolute(self):
+        """Filenames and checksums"""
+        return [{**_, **{"name": self.path / _["name"]}} for _ in self.filenames]
+
+
+@tree_util.register_dataclass
+@dataclass
+class DatasetLoader:
+    """Dataset loading"""
+
+    index: DatasetIndex = DatasetIndex(
+        dataset=DatasetEnum.openwebtext, encoding=EncodingEnum.gpt2
+    )
+    batch_size: int = 16
+    block_size: int = 1024
+    verify: bool = True
+    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
+    seed: int = 8273
+    dtype: JaxDtypesEnum = JaxDtypesEnum.int32
+
+    @property
+    def filenames(self):
+        """Absolute filenames of the loader"""
+        return self.index.filenames_absolute
+
+    @property
+    def mesh_jax(self):
+        """Mesh over the batch axis for distributed parallel data training"""
+        return jax.make_mesh(
+            axis_shapes=(len(self.devices),),
+            axis_names=("batch",),
+            devices=self.devices_jax,
+        )
+
+    @property
+    def devices_jax(self):
+        """Return actual device"""
+        return [_.jax for _ in self.devices]
+
+    @property
+    def sharding_batch(self):
+        """Batch sharding"""
+        return NamedSharding(self.mesh_jax, PartitionSpec(*self.mesh_jax.axis_names))
 
     @property
     def n_shards(self):
@@ -196,9 +221,9 @@ class DatasetLoader:
                 self.filenames[idx_shard]["checksum"],
             )
 
-            with safe_open(self.path / filename, framework="numpy", device="cpu") as f:
+            with safe_open(filename, framework="numpy", device="cpu") as f:
                 # TODO: load straight to device for zero copy
-                log.info(f"Reading {self.path / filename}")
+                log.info(f"Reading {filename}")
                 data = f.get_tensor("tokens")
 
                 if self.verify and checksum != get_checksum(data):
@@ -267,8 +292,10 @@ class Trainer:
         # TODO: compute flops from train_step
         flops = model.flops(batch_size=data_loader_train.batch_size)
 
-        data_loader_train = data_loader_train.iter(block_size=model.block_size)
-        data_loader_validate = data_loader_validate.iter(block_size=model.block_size)
+        data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
+        data_loader_validate = data_loader_validate.iter(
+            block_size=model.config.block_size
+        )
 
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
@@ -325,7 +352,7 @@ class Config:
     devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
     dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
-    data: DatasetLoader = field(default_factory=DatasetLoader)
+    loading: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
     _key = None
@@ -335,7 +362,7 @@ class Config:
         self.training.wandb_log = self.logging.wandb_log
 
         # TODO: which gets precendence here data or model definition?
-        self.data.devices = self.devices
+        self.loading.devices = self.devices
 
     @property
     def mesh_jax(self):
@@ -369,9 +396,10 @@ class Config:
         return subkey
 
     @property
-    def data_val(self):
+    def loading_val(self):
         """Validation dataset"""
-        return replace(self.data, suffix="val")
+        index = replace(self.loading.index, suffix="val")
+        return replace(self.loading, index=index)
 
     @classmethod
     def read(cls, path: str):
@@ -440,13 +468,15 @@ if __name__ == "__main__":
             config=asdict(config),
         )
 
-    data_loader_train = config.data
-    log.info(f"Training dataset has {data_loader_train.n_tokens_total} tokens.")
+    data_loader_train = config.loading
+    log.info(f"Training dataset has {data_loader_train.index.n_tokens_total} tokens.")
 
-    data_loader_validate = config.data_val
-    log.info(f"Validation dataset has {data_loader_validate.n_tokens_total} tokens.")
+    data_loader_validate = config.loading_val
+    log.info(
+        f"Validation dataset has {data_loader_validate.index.n_tokens_total} tokens."
+    )
 
-    config.model.vocab_size = config.data.n_vocab
+    config.model.vocab_size = config.loading.index.n_vocab
 
     if config.init_from == InitFromEnum.scratch:
         model = GPT.from_config(config.model)
