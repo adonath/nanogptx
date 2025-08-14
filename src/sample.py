@@ -135,12 +135,11 @@ def sample(config):
 
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
-        device=config.device.jax,
         dtype=DTYPES[encoding.name],
     )[None, ...]
 
     # use num_samples as batch size
-    x = jnp.repeat(x, repeats=config.sampler.num_samples, axis=0)
+    x = jax.device_put(jnp.repeat(x, repeats=config.sampler.num_samples, axis=0), config.device.jax)
 
     samples = config.sampler.generate(
         model=model.init(
