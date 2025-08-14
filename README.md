@@ -12,9 +12,21 @@
 </p>
 
 ## Purpose of this Repository
-The purpose of this repository is mostly documenting my own learning progress on recent developments in AI. I also wanted to learn more about JAX and found in the process that I typically ended up with simple and cleaner code compared to working with PyTorch, so I eneded up with this as clean as possible re-implementation of [nanoGPT](https://github.com/karpathy/nanoGPT) in pure JAX. It can be used for educational purposes, or as a clean, but still hackable starting point for small scale experiments on modified architecures, training strategies or experiments in interpretability. I think cooking a new experiment needs to start from a clean lab, so happy cooking!
+The purpose of this repository is mostly documenting my own learning progress on recent developments in AI. I first wanted to learn more transformers and the process of training LLMs and at the same time I wanted to learn about [JAX](https://docs.jax.dev/en/latest/). Give these goals a reasonable project was to re-implement [nanoGPT](https://github.com/karpathy/nanoGPT) in pure JAX. In the process I have found that I typically ended up with much cleaner code, compared to PyTorch. So I decided to spli the code base up into smaller reusable and modular parts. Now it can be used for educational purposes, or as a clean and hackable starting point for small scale experiments on modified architecures, training strategies or experiments in interpretability. I think cooking a new experiment needs to start from a clean lab, so **happy cooking**!
 
-**Note**: if you need minimal production grade implementations of LLMS you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples).
+**Note**: if you need minimal production grade implementations of LLMS you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples) or [Levanter](https://github.com/stanford-crfm/levanter), which is based on [Equinox](https://docs.kidger.site/equinox/).
+
+## Features
+
+Here are some of the features of this implementation:
+
+- **Hierarchical configuration:** I do like hierarchical configuration as loNg as it is not too deep. The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. This might seem like a misue of the JAX PyTree system, but it is extremely simple and works rather well. It does type coercion to the default type on read so you get a minimal [Pydantic](https://docs.pydantic.dev/latest/) experience.
+- **CLI:** after careful consideration I have decied to support a CLI via [tyro](https://brentyi.github.io/tyro/). The code overhead is minimal, as all the configuration is in dataclasses anyway. And tyro offers a nice default interface as well as nested commands.
+- **Abstract evaluation and lazy initialization:** I think it is useful to not full instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape and dtype errors early without and using any flops.
+- **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training.
+- **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
+- **Sharding strategies**: TODO: support for configurable sharding strategies.
+- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and document cleaning.
 
 ## Getting started
 This repositiry comes with mutiple pre-defined environmenst in a `pixi.toml` file. This makes ir very covenient to run the model in CPU, GPU and even TPU environments.
@@ -28,17 +40,21 @@ pixi run train train-shakespeare-char
 pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
 ```
 
-## Features
+## How to work with this Repository
+This repository can bes used as template for your own small to mid-scale projects.
 
-Here are some of the features of this implementation:
+### Adding a new Dataset
+I you would like to add a new dataset follow these steps:
 
-- **Hierarchical configuration:** I do like hierarchical configuration as loing as it is not too deep. The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. This might seem like a misue of the the system, but it is extremely simple and works rather well. It does type coercion to the default type so you get sort of minimal Pydantic experience.
-- **CLI:** after careful consideration I have decied to support a CLI via `tyro`. The overhead is minimal, as all the configuration is in dataclasses anyway. If you don't like it you can remove it.
-- **Abstract evaluation and lazy initialization:** I think it is useful to not full instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape and dtype errors early.
-- **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets etc.
-- **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
-- **Sharding strategies**: TODO: support for configurable sharding strategies.
-- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and document cleaning.
+- Add a new entry to the `DatasetEnum` with a short identifier of your dataset
+- Add the download urls in `download.py`, decompressing / unzip / untar should also happen at this step
+- Add a custom read function in `prepare.py` as needed.
+
+### Adding a new Model
+TODO:
+
+### Adding a new Config
+TODO:
 
 
 ## Acknowledgements
