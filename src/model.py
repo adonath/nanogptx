@@ -36,7 +36,7 @@ DEFAULT_DTYPE = JaxDtypesEnum.float32
 DEFAULT_RNG_KEY = jax.random.key(98238)
 DEFAULT_DEVICE = tuple(JaxDevicesEnum)[0]
 
-USE_FLASH_ATTENTION = True
+USE_FLASH_ATTENTION = False
 
 
 def dot_product_flash_attention(query, key, value, is_causal):
@@ -205,7 +205,7 @@ class ArrayInfo:
             filename=filename,
             name=name,
         )
-        return cls(init=init, **meta)
+        return cls(init=init, shape=meta["shape"], dtype=meta["dtype"])
 
 
 @dataclass
