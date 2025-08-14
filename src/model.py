@@ -21,7 +21,7 @@ from safetensors.flax import save_file
 from utils import (
     PATH_DATA,
     AvailableJaxDevices,
-    AvailableJaxDtypes,
+    JaxDtypesEnum,
     flatten_pytree_with_path,
     read_safetensors_header,
     sizeof_fmt,
@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 PATH = Path(__file__).parent
 DEFAULT_INIT_STD = 0.02
-DEFAULT_DTYPE = jnp.float32
+DEFAULT_DTYPE = JaxDtypesEnum.float32
 DEFAULT_RNG_KEY = jax.random.key(98238)
 DEFAULT_DEVICE = None
 
@@ -174,7 +174,7 @@ class ArrayInfo:
 
     shape: tuple[int, ...]
     init: Callable | None = None
-    dtype: AvailableJaxDtypes = DEFAULT_DTYPE
+    dtype: JaxDtypesEnum = DEFAULT_DTYPE
     out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
     post_init: Callable = lambda _: _
 
@@ -213,7 +213,7 @@ class InitArrays:
     """State base callable"""
 
     rng_key: jax.Array
-    dtype: AvailableJaxDtypes = DEFAULT_DTYPE
+    dtype: JaxDtypesEnum = DEFAULT_DTYPE
     device: AvailableJaxDevices = DEFAULT_DEVICE
 
     def __call__(self, leave):

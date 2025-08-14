@@ -7,6 +7,7 @@ from collections import namedtuple
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
+from pathlib import Path
 from typing import Literal
 
 import jax
@@ -25,11 +26,10 @@ from model import GPT, GPTConfig, PretrainedModels
 from prepare import DatasetEnum, EncodingEnum
 from utils import (
     JAX_DEVICES,
-    JAX_DTYPES,
     PATH_BASE,
     PATH_DATA,
     AvailableJaxDevices,
-    AvailableJaxDtypes,
+    JaxDtypesEnum,
     flatten_pytree_with_path,
     get_checksum,
     get_random_name,
@@ -119,7 +119,7 @@ class DatasetLoader:
     encoding: EncodingEnum | str = EncodingEnum.gpt2
     devices: Sequence[AvailableJaxDevices] = tuple(JAX_DEVICES)
     seed: int = 8273
-    dtype: str = "int32"
+    dtype: JaxDtypesEnum = JaxDtypesEnum.int32
     suffix: Literal["train", "val"] = "train"
 
     @property
@@ -325,7 +325,7 @@ class Config:
     init_from: InitFromEnum | str = InitFromEnum.scratch
     seed: int = 9283  # Random seed
     devices: Sequence[AvailableJaxDevices] = tuple(JAX_DEVICES)
-    dtype: AvailableJaxDtypes = "float32"
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
     data: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
@@ -359,11 +359,6 @@ class Config:
         return [JAX_DEVICES[_] for _ in self.devices]
 
     @property
-    def dtype_jax(self):
-        """Return actual device"""
-        return JAX_DTYPES[self.dtype]
-
-    @property
     def rng_key(self) -> jax.Array:
         """Generate random key for initialization"""
         if self._key is None:
@@ -383,6 +378,7 @@ class Config:
     @classmethod
     def read(cls, path: str):
         """Read configuration from file"""
+        path = Path(path)
         log.info(f"Reading configuration from {path}")
 
         if path.suffix == ".safetensors":
@@ -464,7 +460,7 @@ if __name__ == "__main__":
         model = GPT.from_pretrained(config.init_from)
 
     log.info(f"{model.info()}")
-    spec = {"device": config.sharding_replicated, "dtype": config.dtype_jax}
+    spec = {"device": config.sharding_replicated, "dtype": config.dtype.jax}
 
     model = config.training.train(
         model=model.init(rng_key=config.rng_key, **spec),

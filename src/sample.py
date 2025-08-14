@@ -15,10 +15,9 @@ from prepare import DTYPES, ENCODINGS
 from train import InitFromEnum
 from utils import (
     JAX_DEVICES,
-    JAX_DTYPES,
     PATH_DATA,
     AvailableJaxDevices,
-    AvailableJaxDtypes,
+    JaxDtypesEnum,
 )
 
 PREFIX = "FILE:"
@@ -42,18 +41,13 @@ class SampleConfig:
     top_k: int = 200  # Retain only the top_k most likely tokens, clamp others to have 0 probability
     seed: int = 9283  # Random seed
     device: AvailableJaxDevices = list(JAX_DEVICES)[0]
-    dtype: AvailableJaxDtypes = "float32"
+    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     _key = None
 
     @property
     def device_jax(self):
         """Return actual device"""
         return JAX_DEVICES[self.device]
-
-    @property
-    def dtype_jax(self):
-        """Return actual device"""
-        return JAX_DTYPES[self.dtype]
 
     @property
     def rng_key(self) -> jax.Array:
@@ -106,7 +100,7 @@ def sample(config):
 
     samples = model.init(
         device=config.device_jax,
-        dtype=config.dtype_jax,
+        dtype=config.dtype.jax,
     ).generate(
         x,
         max_new_tokens=config.max_new_tokens,

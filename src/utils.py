@@ -4,6 +4,7 @@ import logging
 import random
 import string
 import struct
+from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import Literal
@@ -26,18 +27,25 @@ SAFETENSOR_TO_JAX_DTYPE = {
     "U8": jnp.uint8,
     "U16": jnp.uint16,
     "U32": jnp.uint32,
-    "U64": jnp.uint64,
     "I8": jnp.int8,
     "I16": jnp.int16,
     "I32": jnp.int32,
-    "I64": jnp.int64,
     "F16": jnp.float16,
     "F32": jnp.float32,
-    "F64": jnp.float64,
     "BF16": jnp.bfloat16,
-    "C64": jnp.complex64,
-    "C128": jnp.complex128,
 }
+
+
+if jax.config.values.get("jax_enable_x64", False):
+    SAFETENSOR_TO_JAX_DTYPE.update(
+        {
+            "U64": jnp.uint64,
+            "I64": jnp.int64,
+            "F64": jnp.float64,
+            "C64": jnp.complex64,
+            "C128": jnp.complex128,
+        }
+    )
 
 
 join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
@@ -95,17 +103,13 @@ AvailableJaxDevices = Literal[tuple(JAX_DEVICES)]
 
 def get_jax_dtypes():
     """Get available dtypes"""
-    dtypes = {"float32": jnp.float32, "bfloat16": jnp.bfloat16, "int32": jnp.int32}
-
-    if jax.config.values.get("jax_enable_x64", False):
-        dtypes["float64"] = jnp.float64
-        dtypes["int64"] = jnp.int64
-
+    dtypes = {str(jnp.dtype(_)): _ for _ in SAFETENSOR_TO_JAX_DTYPE.values()}
     return dtypes
 
 
 JAX_DTYPES = get_jax_dtypes()
-AvailableJaxDtypes = Literal[tuple(JAX_DTYPES)]
+JaxDtypesEnum = StrEnum("JaxDtypesEnum", list(JAX_DTYPES))
+JaxDtypesEnum.jax = property(lambda self: JAX_DTYPES[self.value])
 
 
 def dot_product_attention_simple(query, key, value, mask=None):
