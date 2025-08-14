@@ -38,6 +38,7 @@ class TokenSampler:
 
     def generate(self, model, tokens, rng_key):
         """Generate new tokens"""
+        rng_key = jax.device_put(rng_key, tokens.device)
         top_k = (
             min(self.top_k, model.config.vocab_size) if self.top_k is not None else None
         )
