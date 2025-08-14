@@ -602,7 +602,7 @@ class GPT:
         """Estimate number of flops per iteration"""
 
         def f(x):
-            return self(x, rng_key=jax.random.key(923), is_training=True)
+            return self(x, rng_key=DEFAULT_RNG_KEY, is_training=True)
 
         def get_flops(x):
             compiled = jax.jit(f).trace(x).lower().compile()
@@ -795,6 +795,6 @@ def abstract_call(model, x, is_training=True):
     )
 
     def f(x):
-        return model(x, rng_key=jax.random.key(923), is_training=is_training)
+        return model(x, rng_key=DEFAULT_RNG_KEY, is_training=is_training)
 
     return jax.eval_shape(f, x)

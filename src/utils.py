@@ -65,6 +65,7 @@ def read_safetensors_header(file_path: str) -> dict[str, tuple]:
         header[name] = {
             "shape": tuple(meta["shape"]),
             "dtype": JaxDtypesEnum(dtype_str),
+            "data_offsets": tuple(meta["data_offsets"]),
         }
 
     return header
@@ -182,7 +183,7 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
 
 
 def sizeof_fmt(num, system="binary"):
-    """Human readable version of a bytes number"""
+    """Human readable version of a large number"""
     # fmt: off
     choice = {
         "binary": (("B", "KiB", "MiB", "GiB", "TiB"), 1024.0),
