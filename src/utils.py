@@ -158,7 +158,9 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
 
         if info is None:
             log.debug(f"No value found for `{key}`, setting to `{info}`")
+            return None
 
+        # this requires the leave to be callable...
         return type(leave)(info)
 
     return update
