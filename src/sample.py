@@ -10,7 +10,7 @@ import tyro
 from jax import tree_util
 from safetensors import safe_open
 
-from model import DEFAULT_DEVICE, GPT
+from model import DEFAULT_DEVICE, GPT, Axis
 from prepare import DTYPES, ENCODINGS
 from train import InitFromEnum
 from utils import (
@@ -51,14 +51,7 @@ class SampleConfig:
     @property
     def rng_key(self) -> jax.Array:
         """Generate random key for initialization"""
-        if self._key is None:
-            self._key = jax.random.PRNGKey(self.seed)
-
-        # in general state based key generation is not a good idea in Jax!
-        # however the config class never(!) crosses any jit and function transform
-        # boundaries. So it is safe to use it here.
-        self._key, subkey = jax.random.split(self._key)
-        return subkey
+        return jax.random.PRNGKey(self.seed)
 
     @property
     def prompt(self):
@@ -67,6 +60,46 @@ class SampleConfig:
             with open(self.start[len(PREFIX) :], "r", encoding="utf-8") as f:
                 return f.read()
         return self.start
+
+    def generate(self, model, tokens):
+        """Generate new tokens"""
+        top_k = (
+            min(self.top_k, model.wte.vocab_size) if self.top_k is not None else None
+        )
+
+        n_tokens = tokens.shape[Axis.sequence]
+        width, width[Axis.sequence] = [(0, 0)] * tokens.ndim, (0, self.max_new_tokens)
+        tokens = jnp.pad(tokens, pad_width=width)
+
+        def sample(context, idx):
+            context_window = jax.lax.dynamic_slice_in_dim(
+                context, idx - model.block_size, model.block_size, axis=Axis.sequence
+            )
+            logits = model(context_window, rng_key=self.rng_key, is_training=False)
+            logits = logits[:, -1:, :] / self.temperature
+
+            if top_k is not None:
+                values, indices = jax.lax.top_k(logits, top_k)
+            else:
+                values, indices = logits, jnp.arange(model.wte.vocab_size)
+
+            probs = jax.nn.softmax(values, axis=Axis.feature)
+
+            keys = jax.random.split(
+                jax.random.fold_in(self.rng_key, idx), context.shape[Axis.batch]
+            )
+            next_token = jax.vmap(jax.random.choice)(
+                keys,
+                indices[:, 0, :],
+                p=probs[:, 0, :],
+            )
+
+            context = context.at[:, idx].set(next_token)
+            return context, next_token
+
+        idxs = jnp.arange(n_tokens, n_tokens + self.max_new_tokens)
+        _, next_tokens = jax.lax.scan(sample, tokens, idxs)
+        return next_tokens.T
 
 
 def sample(config):

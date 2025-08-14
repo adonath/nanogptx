@@ -745,44 +745,6 @@ class GPT:
         log.info(f"Writing model to {path}")
         save_file(data, path, metadata=metadata)
 
-    def generate(self, tokens, max_new_tokens, rng_key, temperature=1.0, top_k=None):
-        """Generate new tokens"""
-        top_k = min(top_k, self.wte.vocab_size) if top_k is not None else None
-
-        n_tokens = tokens.shape[Axis.sequence]
-        width, width[Axis.sequence] = [(0, 0)] * tokens.ndim, (0, max_new_tokens)
-        tokens = jnp.pad(tokens, pad_width=width)
-
-        def sample(context, idx):
-            context_window = jax.lax.dynamic_slice_in_dim(
-                context, idx - self.block_size, self.block_size, axis=Axis.sequence
-            )
-            logits = self(context_window, rng_key=rng_key, is_training=False)
-            logits = logits[:, -1:, :] / temperature
-
-            if top_k is not None:
-                values, indices = jax.lax.top_k(logits, top_k)
-            else:
-                values, indices = logits, jnp.arange(self.wte.vocab_size)
-
-            probs = jax.nn.softmax(values, axis=Axis.feature)
-
-            keys = jax.random.split(
-                jax.random.fold_in(rng_key, idx), context.shape[Axis.batch]
-            )
-            next_token = jax.vmap(jax.random.choice)(
-                keys,
-                indices[:, 0, :],
-                p=probs[:, 0, :],
-            )
-
-            context = context.at[:, idx].set(next_token)
-            return context, next_token
-
-        idxs = jnp.arange(n_tokens, n_tokens + max_new_tokens)
-        _, next_tokens = jax.lax.scan(sample, tokens, idxs)
-        return next_tokens.T
-
 
 def abstract_call(model, x, is_training=True):
     """Call model evaluating shapes, dtypes and shardings"""
