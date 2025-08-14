@@ -28,6 +28,18 @@ pixi run train train-shakespeare-char
 pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
 ```
 
+## Features
+
+Here are some of the features of this implementation:
+
+- **Hierarchical configuration:** I do like hierarchical configuration as loing as it is not too deep. The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. This might seem like a misue of the the system, but it is extremely simple and works rather well. It does type coercion to the default type so you get sort of minimal Pydantic experience.
+- **CLI:** after careful consideration I have decied to support a CLI via `tyro`. The overhead is minimal, as all the configuration is in dataclasses anyway. If you don't like it you can remove it.
+- **Abstract evaluation and lazy initialization:** I think it is useful to not full instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape and dtype errors early.
+- **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets etc.
+- **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
+- **Sharding strategies**: TODO: support for configurable sharding strategies.
+
+
 ## Acknowledgements
 
 Thanks to @fcrespo82 for the names list from the [Ubuntu Name generator](https://ubuntu-name-generator.crespo.com.br).
