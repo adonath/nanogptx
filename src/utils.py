@@ -114,6 +114,14 @@ JAX_DTYPES = get_jax_dtypes()
 JaxDtypesEnum = StrEnum("JaxDtypesEnum", list(JAX_DTYPES))
 JaxDtypesEnum.jax = property(lambda self: JAX_DTYPES[self.name])
 
+JaxFloatDtypesEnum = StrEnum(
+    "JaxFloatDtypesEnum", [_ for _ in JAX_DTYPES if "float" in _]
+)
+JaxFloatDtypesEnum.jax = property(lambda self: JAX_DTYPES[self.name])
+
+JaxIntDtypesEnum = StrEnum("JaxIntDtypesEnum", [_ for _ in JAX_DTYPES if "int" in _])
+JaxIntDtypesEnum.jax = property(lambda self: JAX_DTYPES[self.name])
+
 
 def dot_product_attention_simple(query, key, value, mask=None):
     """Simple scaled dot product attention, can be used with mps"""

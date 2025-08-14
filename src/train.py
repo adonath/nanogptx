@@ -28,7 +28,8 @@ from utils import (
     PATH_BASE,
     PATH_DATA,
     JaxDevicesEnum,
-    JaxDtypesEnum,
+    JaxFloatDtypesEnum,
+    JaxIntDtypesEnum,
     flatten_pytree_with_path,
     get_checksum,
     get_random_name,
@@ -179,7 +180,7 @@ class DatasetLoader:
     verify: bool = True
     devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
     seed: int = 8273
-    dtype: JaxDtypesEnum = JaxDtypesEnum.int32
+    dtype: JaxIntDtypesEnum = JaxIntDtypesEnum.int32
 
     @property
     def filenames(self):
@@ -351,7 +352,7 @@ class Config:
     init_from: InitFromEnum = InitFromEnum.scratch
     seed: int = 9283  # Random seed
     devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
     loading: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)

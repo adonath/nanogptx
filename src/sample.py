@@ -16,7 +16,7 @@ from train import InitFromEnum
 from utils import (
     PATH_DATA,
     JaxDevicesEnum,
-    JaxDtypesEnum,
+    JaxFloatDtypesEnum,
 )
 
 PREFIX = "FILE:"
@@ -42,7 +42,10 @@ class TokenSampler:
         )
 
         n_tokens = tokens.shape[Axis.sequence]
-        width, width[Axis.sequence] = [(0, 0)] * tokens.ndim, (0, self.max_new_tokens)
+        width, width[Axis.sequence] = (
+            [(0, 0)] * tokens.ndim,
+            (0, min(self.max_new_tokens, model.config.block_size)),
+        )
         tokens = jnp.pad(tokens, pad_width=width)
 
         def sample(context, idx):
@@ -88,7 +91,7 @@ class SampleConfig:
     init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
     start: str = ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
     device: JaxDevicesEnum = DEFAULT_DEVICE
-    dtype: JaxDtypesEnum = JaxDtypesEnum.float32
+    dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
     seed: int = 9283  # Random seed
     sampler: TokenSampler = field(default_factory=TokenSampler)
 
