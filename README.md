@@ -1,4 +1,4 @@
-# A "nanoGPT" implementation in pure JAX
+# A "nanoGPT" Implementation in Pure JAX
 
 
 [![Release](https://img.shields.io/github/v/release/adonath/nanogpt-jax)](https://img.shields.io/github/v/release/adonath/nanogpt-jax)
