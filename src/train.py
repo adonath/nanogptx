@@ -25,10 +25,9 @@ import wandb
 from model import GPT, GPTConfig, PretrainedModels
 from prepare import DatasetEnum, EncodingEnum
 from utils import (
-    JAX_DEVICES,
     PATH_BASE,
     PATH_DATA,
-    AvailableJaxDevices,
+    JaxDevicesEnum,
     JaxDtypesEnum,
     flatten_pytree_with_path,
     get_checksum,
@@ -115,9 +114,9 @@ class DatasetLoader:
     batch_size: int = 16
     block_size: int = 1024
     verify: bool = True
-    dataset: DatasetEnum | str = DatasetEnum.openwebtext
-    encoding: EncodingEnum | str = EncodingEnum.gpt2
-    devices: Sequence[AvailableJaxDevices] = tuple(JAX_DEVICES)
+    dataset: DatasetEnum = DatasetEnum.openwebtext
+    encoding: EncodingEnum = EncodingEnum.gpt2
+    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
     seed: int = 8273
     dtype: JaxDtypesEnum = JaxDtypesEnum.int32
     suffix: Literal["train", "val"] = "train"
@@ -134,7 +133,7 @@ class DatasetLoader:
     @property
     def devices_jax(self):
         """Return actual device"""
-        return [JAX_DEVICES[_] for _ in self.devices]
+        return [_.jax for _ in self.devices]
 
     @property
     def sharding_batch(self):
@@ -324,7 +323,7 @@ class Config:
     # TODO: add name and project?
     init_from: InitFromEnum | str = InitFromEnum.scratch
     seed: int = 9283  # Random seed
-    devices: Sequence[AvailableJaxDevices] = tuple(JAX_DEVICES)
+    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
     dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
     data: DatasetLoader = field(default_factory=DatasetLoader)
@@ -356,7 +355,7 @@ class Config:
     @property
     def devices_jax(self):
         """Return actual device"""
-        return [JAX_DEVICES[_] for _ in self.devices]
+        return [_.jax for _ in self.devices]
 
     @property
     def rng_key(self) -> jax.Array:

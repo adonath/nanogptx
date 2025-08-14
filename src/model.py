@@ -20,7 +20,7 @@ from safetensors.flax import save_file
 
 from utils import (
     PATH_DATA,
-    AvailableJaxDevices,
+    JaxDevicesEnum,
     JaxDtypesEnum,
     flatten_pytree_with_path,
     read_safetensors_header,
@@ -175,7 +175,7 @@ class ArrayInfo:
     shape: tuple[int, ...]
     init: Callable | None = None
     dtype: JaxDtypesEnum = DEFAULT_DTYPE
-    out_sharding: AvailableJaxDevices = DEFAULT_DEVICE
+    out_sharding: JaxDevicesEnum = DEFAULT_DEVICE
     post_init: Callable = lambda _: _
 
     @property
@@ -214,7 +214,7 @@ class InitArrays:
 
     rng_key: jax.Array
     dtype: JaxDtypesEnum = DEFAULT_DTYPE
-    device: AvailableJaxDevices = DEFAULT_DEVICE
+    device: JaxDevicesEnum = DEFAULT_DEVICE
 
     def __call__(self, leave):
         if isinstance(leave, ArrayInfo):

@@ -7,7 +7,6 @@ import struct
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
-from typing import Literal
 
 import jax
 from jax import numpy as jnp
@@ -98,7 +97,8 @@ def get_jax_devices():
 
 
 JAX_DEVICES = get_jax_devices()
-AvailableJaxDevices = Literal[tuple(JAX_DEVICES)]
+JaxDevicesEnum = StrEnum("JaxDtypesEnum", list(JAX_DEVICES))
+JaxDevicesEnum.jax = property(lambda self: JAX_DEVICES[self.name])
 
 
 def get_jax_dtypes():
@@ -109,7 +109,7 @@ def get_jax_dtypes():
 
 JAX_DTYPES = get_jax_dtypes()
 JaxDtypesEnum = StrEnum("JaxDtypesEnum", list(JAX_DTYPES))
-JaxDtypesEnum.jax = property(lambda self: JAX_DTYPES[self.value])
+JaxDtypesEnum.jax = property(lambda self: JAX_DTYPES[self.name])
 
 
 def dot_product_attention_simple(query, key, value, mask=None):

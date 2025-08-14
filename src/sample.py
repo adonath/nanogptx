@@ -10,13 +10,12 @@ import tyro
 from jax import tree_util
 from safetensors import safe_open
 
-from model import GPT
+from model import DEFAULT_DEVICE, GPT
 from prepare import DTYPES, ENCODINGS
 from train import InitFromEnum
 from utils import (
-    JAX_DEVICES,
     PATH_DATA,
-    AvailableJaxDevices,
+    JaxDevicesEnum,
     JaxDtypesEnum,
 )
 
@@ -40,14 +39,14 @@ class SampleConfig:
     temperature: float = 0.8  # Sampling temperature (1.0 = no change, < 1.0 = less random, > 1.0 = more random)
     top_k: int = 200  # Retain only the top_k most likely tokens, clamp others to have 0 probability
     seed: int = 9283  # Random seed
-    device: AvailableJaxDevices = list(JAX_DEVICES)[0]
+    device: JaxDevicesEnum = DEFAULT_DEVICE
     dtype: JaxDtypesEnum = JaxDtypesEnum.float32
     _key = None
 
     @property
     def device_jax(self):
         """Return actual device"""
-        return JAX_DEVICES[self.device]
+        return self.device.jax
 
     @property
     def rng_key(self) -> jax.Array:
