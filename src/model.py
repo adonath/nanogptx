@@ -34,7 +34,7 @@ PATH = Path(__file__).parent
 DEFAULT_INIT_STD = 0.02
 DEFAULT_DTYPE = JaxDtypesEnum.float32
 DEFAULT_RNG_KEY = jax.random.key(98238)
-DEFAULT_DEVICE = None
+DEFAULT_DEVICE = tuple(JaxDevicesEnum)[0]
 
 USE_FLASH_ATTENTION = True
 
@@ -156,7 +156,7 @@ class initialize_from_safetensors:
         with safe_open(self.filename, framework=self.framework) as f:
             # TODO: use dlpack for device buffer donation
             array = f.get_tensor(self.name)
-            array = array.astype(dtype, out_sharding)
+            array = jax.device_put(array.astype(dtype), out_sharding)
 
             if shape is not None and shape != array.shape:
                 message = (
@@ -193,8 +193,8 @@ class ArrayInfo:
         result = self.init(
             key=rng_key,
             shape=self.shape if device is None else device,
-            dtype=self.dtype if dtype is None else dtype,
-            out_sharding=self.out_sharding,
+            dtype=self.dtype.jax if dtype is None else dtype,
+            out_sharding=self.out_sharding.jax,
         )
         return self.post_init(result)
 
@@ -220,7 +220,6 @@ class InitArrays:
         if isinstance(leave, ArrayInfo):
             if leave.init is None:
                 return None
-
             self.rng_key, subkey = jax.random.split(self.rng_key)
             return leave.to_value(subkey)
 
