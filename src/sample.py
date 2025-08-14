@@ -45,7 +45,7 @@ class TokenSampler:
         n_tokens = tokens.shape[Axis.sequence]
         width, width[Axis.sequence] = (
             [(0, 0)] * tokens.ndim,
-            (0, min(self.max_new_tokens, model.config.block_size)),
+            (0, max(self.max_new_tokens, model.config.block_size)),
         )
         tokens = jnp.pad(tokens, pad_width=width)
 

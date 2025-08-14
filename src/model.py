@@ -193,8 +193,8 @@ class ArrayInfo:
         result = self.init(
             key=rng_key,
             shape=self.shape,
-            dtype=self.dtype.jax if dtype is None else dtype.jax,
-            out_sharding=self.out_sharding.jax if device is None else device.jax,
+            dtype=self.dtype.jax if dtype is None else dtype,
+            out_sharding=self.out_sharding.jax if device is None else device,
         )
         return self.post_init(result)
 
@@ -208,22 +208,21 @@ class ArrayInfo:
         return cls(init=init, shape=meta["shape"], dtype=meta["dtype"])
 
 
-@dataclass
-class InitArrays:
+def init_array_leaves(rng_key, dtype=None, device=None):
     """State base callable"""
 
-    rng_key: jax.Array
-    dtype: Optional[JaxDtypesEnum] = None
-    device: Optional[JaxDevicesEnum] = None
+    def init(leave):
+        nonlocal rng_key
 
-    def __call__(self, leave):
         if isinstance(leave, ArrayInfo):
             if leave.init is None:
                 return None
-            self.rng_key, subkey = jax.random.split(self.rng_key)
-            return leave.to_value(subkey, dtype=self.dtype, device=self.device)
+            rng_key, subkey = jax.random.split(rng_key)
+            return leave.to_value(subkey, dtype=dtype, device=device)
 
         return leave
+
+    return init
 
 
 @tree_util.register_dataclass
@@ -655,7 +654,7 @@ class GPT:
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=None, device=None):
         """Init arrays of the model"""
         # TODO: do an abstract evaluation of the shape, dtypes and shardings here?
-        init_arrays = InitArrays(rng_key=rng_key, dtype=dtype, device=device)
+        init_arrays = init_array_leaves(rng_key=rng_key, dtype=dtype, device=device)
         return jax.tree.map(
             init_arrays, self, is_leaf=lambda _: isinstance(_, ArrayInfo)
         )
