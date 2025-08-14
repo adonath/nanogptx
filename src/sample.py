@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -90,8 +91,8 @@ class SampleConfig:
 
     init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
     start: str = ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
-    device: JaxDevicesEnum = DEFAULT_DEVICE
-    dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
+    device: Optional[JaxDevicesEnum] = DEFAULT_DEVICE # Overwrite default device
+    dtype: Optional[JaxFloatDtypesEnum] = JaxFloatDtypesEnum.float32
     seed: int = 9283  # Random seed
     sampler: TokenSampler = field(default_factory=TokenSampler)
 

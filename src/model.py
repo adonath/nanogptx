@@ -192,9 +192,9 @@ class ArrayInfo:
         """Initialize to value"""
         result = self.init(
             key=rng_key,
-            shape=self.shape if device is None else device,
-            dtype=self.dtype.jax if dtype is None else dtype,
-            out_sharding=self.out_sharding.jax,
+            shape=self.shape,
+            dtype=self.dtype.jax if dtype is None else dtype.jax,
+            out_sharding=self.out_sharding.jax if device is None else device.jax,
         )
         return self.post_init(result)
 
@@ -213,15 +213,15 @@ class InitArrays:
     """State base callable"""
 
     rng_key: jax.Array
-    dtype: JaxDtypesEnum = DEFAULT_DTYPE
-    device: JaxDevicesEnum = DEFAULT_DEVICE
+    dtype: Optional[JaxDtypesEnum] = None
+    device: Optional[JaxDevicesEnum] = None
 
     def __call__(self, leave):
         if isinstance(leave, ArrayInfo):
             if leave.init is None:
                 return None
             self.rng_key, subkey = jax.random.split(self.rng_key)
-            return leave.to_value(subkey)
+            return leave.to_value(subkey, dtype=self.dtype, device=self.device)
 
         return leave
 
@@ -652,7 +652,7 @@ class GPT:
             ),
         )
 
-    def init(self, rng_key=DEFAULT_RNG_KEY, dtype=DEFAULT_DTYPE, device=DEFAULT_DEVICE):
+    def init(self, rng_key=DEFAULT_RNG_KEY, dtype=None, device=None):
         """Init arrays of the model"""
         # TODO: do an abstract evaluation of the shape, dtypes and shardings here?
         init_arrays = InitArrays(rng_key=rng_key, dtype=dtype, device=device)
