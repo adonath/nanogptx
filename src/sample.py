@@ -78,7 +78,9 @@ class TokenSampler:
             context = context.at[:, idx].set(next_token)
             return context, next_token
 
-        idxs = jnp.arange(n_tokens, n_tokens + self.max_new_tokens)
+        idxs = jnp.arange(
+            n_tokens, n_tokens + self.max_new_tokens, device=tokens.device
+        )
         _, next_tokens = jax.lax.scan(sample, tokens, idxs)
         return next_tokens.T
 
