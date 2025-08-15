@@ -17,6 +17,7 @@ from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
+import json
 
 from utils import (
     PATH_DATA,
@@ -26,6 +27,7 @@ from utils import (
     read_safetensors_header,
     sizeof_fmt,
     update_leave_from_mapping,
+    assert_shapes_equal,
 )
 
 log = logging.getLogger(__name__)
@@ -91,7 +93,7 @@ class GPTConfig:
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
-    dropout_rate: float = 0.0  # for pretraining 0 is good, for finetuning try 0.1+
+    dropout_rate: float = 0.1  # for pretraining 0 is good, for finetuning try 0.1+
     use_bias: bool = False  # do we use bias inside LayerNorm and Linear layers?
     init_std: float = DEFAULT_INIT_STD
 
@@ -120,6 +122,25 @@ class GPTConfig:
             n_head=n_head,
             n_embd=0,
         )
+
+    @classmethod
+    def read_json(cls, path):
+        """Read hugginface JSON config file"""
+
+        with Path(path).open("r") as f:
+            data = json.load(f)
+
+        return cls(
+            block_size=data["n_ctx"],
+            vocab_size=data["vocab_size"],
+            dropout_rate=data["attn_pdrop"],
+            n_layer=data["n_layer"],
+            n_embd=data["n_embd"],
+            n_head=data["n_head"],
+            init_std=data["initializer_range"],
+            use_bias=False,
+        )
+
 
 
 # TODO: initializers have uniform API since 0.7.0 until then we use:
@@ -663,14 +684,16 @@ class GPT:
     def from_pretrained(cls, model_type) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
-        path = PATH_DATA / f"models/{model_type.value}/model.safetensors"
+        path = PATH_DATA / f"models/{model_type.value}"
 
-        if not path.exists():
+        filename_model = path / "model.safetensors"
+
+        if not filename_model.exists():
             raise FileNotFoundError(
                 f"Model {model_type.value} not available. Download weights using 'download.py' first."
             )
 
-        return cls.read(path)
+        return cls.read(filename_model)
 
     @classmethod
     def read(cls, path, transpose_weights=True) -> GPT:
@@ -699,6 +722,7 @@ class GPT:
             )
 
             if any(name.endswith(_) for _ in transposed) and transpose_weights:
+                array_infos[name].shape = array_infos[name].shape[::-1]
                 array_infos[name].post_init = jnp.matrix_transpose
 
         # tied parameters are missing, just create a reference as placeholder

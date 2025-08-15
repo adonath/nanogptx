@@ -19,10 +19,10 @@ DATA_PATH = Path(__file__).parent.parent / "data"
 N_THREADS_DEAFULT = cpu_count() // 2
 
 MODEL_URLS = {
-    PretrainedModels.gpt2_medium: "https://huggingface.co/openai-community/gpt2-medium/resolve/main/model.safetensors",
-    PretrainedModels.gpt2_large: "https://huggingface.co/openai-community/gpt2-large/resolve/main/model.safetensors",
-    PretrainedModels.gpt2_xl: "https://huggingface.co/openai-community/gpt2-xl/resolve/main/model.safetensors",
-    PretrainedModels.gpt2: "https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors",
+    PretrainedModels.gpt2_medium: ["https://huggingface.co/openai-community/gpt2-medium/resolve/main/model.safetensors",  "https://huggingface.co/openai-community/gpt2-medium/resolve/main/config.json"],
+    PretrainedModels.gpt2_large: ["https://huggingface.co/openai-community/gpt2-large/resolve/main/model.safetensors", "https://huggingface.co/openai-community/gpt2-large/resolve/main/config.json"],
+    PretrainedModels.gpt2_xl: ["https://huggingface.co/openai-community/gpt2-xl/resolve/main/model.safetensors",  "https://huggingface.co/openai-community/gpt2-xl/resolve/main/config.json"],
+    PretrainedModels.gpt2: ["https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors", "https://huggingface.co/openai-community/gpt2/resolve/main/config.json"],
 }
 
 # fmt: off
@@ -118,9 +118,11 @@ def download(
 
     if model is not None:
         model = PretrainedModels(model)
-        url = MODEL_URLS[model]
-        path = DATA_PATH / "models" / model.value / Path(url).name
-        args.append((url, path))
+        urls = MODEL_URLS[model]
+        paths = [
+            DATA_PATH / "models" / model.value / Path(url).name for url in urls
+        ]
+        args.extend(zip(urls, paths))
 
     if dataset is not None:
         dataset = DatasetEnum(dataset)

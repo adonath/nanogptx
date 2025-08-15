@@ -24,6 +24,7 @@ PREFIX = "FILE:"
 
 
 log = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 
 @tree_util.register_dataclass
