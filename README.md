@@ -14,7 +14,7 @@
 ## Purpose of this Repository
 The purpose of this repository is mostly documenting my own learning progress on recent developments in AI. I first wanted to learn more transformers and the process of training LLMs and at the same time I wanted to learn about [JAX](https://docs.jax.dev/en/latest/). Give these goals a reasonable project was to re-implement **[nanoGPT](https://github.com/karpathy/nanoGPT) in pure JAX**. In the process I have found that I typically ended up with much cleaner code, compared to PyTorch. So I decided to split the code base up into smaller reusable and more modular parts. Now it can be used for **educational purposes, or as a clean and hackable starting point for small scale experiments on modified architecures, training strategies or experiments in interpretability**. I think cooking a new experiment needs to start from a clean lab, so **happy cooking**!
 
-**Note**: if you need minimal production grade implementations of LLMS you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples) or [Levanter](https://github.com/stanford-crfm/levanter), which is based on [Equinox](https://docs.kidger.site/equinox/).
+**Note**: if you need minimal production grade implementations of LLMS you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples) or for large scale experiments and training checkout [Levanter](https://github.com/stanford-crfm/levanter), which is based on [Equinox](https://docs.kidger.site/equinox/).
 
 ## Features
 
@@ -26,7 +26,8 @@ Here are some of the features of this implementation:
 - **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training.
 - **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
 - **Sharding strategies**: TODO: support for configurable sharding strategies.
-- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and document cleaning.
+- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and document cleaning
+- **Logging**: just as the original nanoGPT this project uses WandB for logging. I have considered alternatives (especially local solutions), but found other solutions introduce more complexity.
 
 ## Getting started
 This repositiry comes with mutiple pre-defined environmenst in a `pixi.toml` file. This makes ir very covenient to run the model in CPU, GPU and even TPU environments.
