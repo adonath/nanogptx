@@ -172,11 +172,12 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
         info = mapping.get(key, leave if use_default_if_missing else None)
 
         if info is None:
-            log.debug(f"No value found for `{key}`, setting to `{info}`")
+            log.debug(f"No value found for `{key}`, setting to `None`")
             return None
 
         if not isinstance(info, type(leave)):
             try:
+                # this requires the leave to be callable...
                 info = type(leave)(info)
             except ValueError as e:
                 message = (
@@ -184,7 +185,6 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
                 )
                 raise ValueError(message)
 
-        # this requires the leave to be callable...
         return info
 
     return update

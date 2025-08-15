@@ -94,7 +94,7 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout_rate: float = 0.1  # for pretraining 0 is good, for finetuning try 0.1+
-    use_bias: bool = False  # do we use bias inside LayerNorm and Linear layers?
+    use_bias: bool = True  # do we use bias inside LayerNorm and Linear layers?
     init_std: float = DEFAULT_INIT_STD
 
     @property
@@ -113,7 +113,7 @@ class GPTConfig:
         return self.init_std / math.sqrt(2 * self.n_layer)
 
     @classmethod
-    def dummy(cls, n_layer: int = 12, n_head: int = 12):
+    def dummy(cls, n_layer: int = 12, n_head: int = 12, use_bias: bool=True):
         """Dummy configuration to create a model with minimal parameters but with equivalent PyTree structure"""
         return cls(
             block_size=0,
@@ -121,6 +121,7 @@ class GPTConfig:
             n_layer=n_layer,
             n_head=n_head,
             n_embd=0,
+            use_bias=use_bias,
         )
 
     @classmethod
@@ -722,7 +723,6 @@ class GPT:
             )
 
             if any(name.endswith(_) for _ in transposed) and transpose_weights:
-                array_infos[name].shape = array_infos[name].shape[::-1]
                 array_infos[name].post_init = jnp.matrix_transpose
 
         # tied parameters are missing, just create a reference as placeholder
@@ -731,6 +731,7 @@ class GPT:
         config = GPTConfig.dummy(
             n_layer=int(metadata.get("model.n_layer", GPTConfig.n_layer)),
             n_head=int(metadata.get("model.n_head", GPTConfig.n_head)),
+            use_bias=bool(metadata.get("model.use_bias", GPTConfig.use_bias)),
         )
 
         model = GPT.from_config(config)
