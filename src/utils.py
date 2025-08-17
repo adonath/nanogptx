@@ -130,7 +130,7 @@ def dot_product_attention_simple(query, key, value, mask=None):
     attn_logits = attn_logits / jnp.sqrt(d_k)
 
     if mask is not None:
-        attn_logits = jnp.where(mask == 0, -9e15, attn_logits)
+        attn_logits = jnp.where(mask == 0, -jnp.inf, attn_logits)
 
     attention = jax.nn.softmax(attn_logits, axis=-1)
     values = jnp.matmul(attention, value)
