@@ -633,8 +633,8 @@ class GPT:
         n_bytes = jax.tree.reduce(partial(add_size, name="nbytes"), self)
 
         if non_embedding:
-            n_parameters -= self.wte.weight.size
-            n_bytes -= self.wte.weight.nbytes
+            n_parameters -= self.wpe.weight.size
+            n_bytes -= self.wpe.weight.nbytes
 
         return GPTInfo(
             n_parameters=n_parameters,

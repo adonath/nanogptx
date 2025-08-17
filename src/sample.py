@@ -24,7 +24,6 @@ PREFIX = "FILE:"
 
 
 log = logging.getLogger(__file__)
-logging.basicConfig(level=logging.DEBUG)
 
 
 @tree_util.register_dataclass
@@ -112,14 +111,17 @@ def sample(config):
 
     x = jax.device_put(x, config.device.jax)
 
-    for _ in range(config.sampler.num_samples):
+    model = model.init(
+        device=config.device.jax,
+        dtype=config.dtype.jax,
+    )
+
+    log.info(f"{model.info()}")
+    for idx in range(config.sampler.num_samples):
         sample = config.sampler.generate(
-            model=model.init(
-                device=config.device.jax,
-                dtype=config.dtype.jax,
-            ),
+            model=model,
             tokens=x,
-            rng_key=config.rng_key,
+            rng_key=jax.random.fold_in(config.rng_key, idx),
         )
 
     print(encoding.decode(sample[0].tolist()))
