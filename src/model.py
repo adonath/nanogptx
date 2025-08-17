@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from collections import namedtuple
@@ -17,7 +18,6 @@ from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
-import json
 
 from utils import (
     PATH_DATA,
@@ -27,7 +27,6 @@ from utils import (
     read_safetensors_header,
     sizeof_fmt,
     update_leave_from_mapping,
-    assert_shapes_equal,
 )
 
 log = logging.getLogger(__name__)
@@ -113,7 +112,7 @@ class GPTConfig:
         return self.init_std / math.sqrt(2 * self.n_layer)
 
     @classmethod
-    def dummy(cls, n_layer: int = 12, n_head: int = 12, use_bias: bool=True):
+    def dummy(cls, n_layer: int = 12, n_head: int = 12, use_bias: bool = True):
         """Dummy configuration to create a model with minimal parameters but with equivalent PyTree structure"""
         return cls(
             block_size=0,
@@ -141,7 +140,6 @@ class GPTConfig:
             init_std=data["initializer_range"],
             use_bias=False,
         )
-
 
 
 # TODO: initializers have uniform API since 0.7.0 until then we use:
@@ -492,14 +490,14 @@ class CausalSelfAttention:
         key = jnp.reshape(key, shape)
         value = jnp.reshape(value, shape)
 
-        x = dot_product_attention(
+        x_dpa = dot_product_attention(
             query=query,
             key=key,
             value=value,
             is_causal=True,
         )
 
-        x = jnp.reshape(x, (x.shape[Axis.batch], x.shape[Axis.sequence], -1))
+        x = jnp.reshape(x_dpa, x.shape)
         x = self.c_proj(x)
         x = self.resid_dropout(x, rng_key=rng_key, is_training=is_training)
         return x
