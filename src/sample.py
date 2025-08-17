@@ -39,52 +39,23 @@ class TokenSampler:
 
     def generate(self, model, tokens, rng_key):
         """Generate new tokens"""
-        rng_key = jax.device_put(rng_key, tokens.device)
-        top_k = (
-            min(self.top_k, model.config.vocab_size) if self.top_k is not None else None
-        )
+        for idx in range(self.max_new_tokens):
+            rng_key = jax.random.fold_in(rng_key, idx)
 
-        n_tokens = tokens.shape[Axis.sequence]
-        width, width[Axis.sequence] = (
-            [(0, 0)] * tokens.ndim,
-            (0, max(self.max_new_tokens, model.config.block_size)),
-        )
-        tokens = jnp.pad(tokens, pad_width=width)
+            if tokens.shape[Axis.sequence] <= model.config.block_size:
+                tokens = tokens[-model.config.block_size :, :]
 
-        def sample(context, idx):
-            context_window = jax.lax.dynamic_slice_in_dim(
-                context,
-                idx - model.config.block_size,
-                model.config.block_size,
-                axis=Axis.sequence,
-            )
-            logits = model(context_window, rng_key=rng_key, is_training=False)
+            logits = model(tokens, is_training=False, rng_key=rng_key)
             logits = logits[:, -1:, :] / self.temperature
 
-            if top_k is not None:
-                values, indices = jax.lax.top_k(logits, top_k)
-            else:
-                values, indices = logits, jnp.arange(model.wte.vocab_size)
+            if self.top_k is not None:
+                v, _ = jax.lax.top_k(logits, min(self.top_k, logits.shape[-1]))
+                logits = logits.at[logits < v[..., [-1]]].set(-jnp.inf)
 
-            probs = jax.nn.softmax(values, axis=Axis.feature)
+            tokens_next = jax.random.categorical(rng_key, logits, axis=Axis.feature)
+            tokens = jnp.concatenate((tokens, tokens_next), axis=Axis.sequence)
 
-            keys = jax.random.split(
-                jax.random.fold_in(rng_key, idx), context.shape[Axis.batch]
-            )
-            next_token = jax.vmap(jax.random.choice)(
-                keys,
-                indices[:, 0, :],
-                p=probs[:, 0, :],
-            )
-
-            context = context.at[:, idx].set(next_token)
-            return context, next_token
-
-        idxs = jnp.arange(
-            n_tokens, n_tokens + self.max_new_tokens, device=tokens.device
-        )
-        _, next_tokens = jax.lax.scan(sample, tokens, idxs)
-        return next_tokens.T
+        return tokens
 
 
 # fmt: off
@@ -94,7 +65,7 @@ class SampleConfig:
     """Sampling configuration"""
 
     init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
-    start: str = ""  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
+    start: str = "\n"  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
     device: Optional[JaxDevicesEnum] = DEFAULT_DEVICE # Overwrite default device
     dtype: Optional[JaxFloatDtypesEnum] = JaxFloatDtypesEnum.float32
     seed: int = 9283  # Random seed
@@ -139,22 +110,20 @@ def sample(config):
         dtype=DTYPES[encoding.name],
     )[None, ...]
 
-    # use num_samples as batch size
-    x = jax.device_put(jnp.repeat(x, repeats=config.sampler.num_samples, axis=0), config.device.jax)
+    x = jax.device_put(x, config.device.jax)
 
-    samples = config.sampler.generate(
-        model=model.init(
-            device=config.device.jax,
-            dtype=config.dtype.jax,
-        ),
-        tokens=x,
-        rng_key=config.rng_key,
-    )
+    for _ in range(config.sampler.num_samples):
+        sample = config.sampler.generate(
+            model=model.init(
+                device=config.device.jax,
+                dtype=config.dtype.jax,
+            ),
+            tokens=x,
+            rng_key=config.rng_key,
+        )
 
-    for sample in samples:
-        time.sleep(0.1)
-        print(encoding.decode(sample.tolist()))
-        print("---------------")
+    print(encoding.decode(sample[0].tolist()))
+    print("---------------")
 
 
 if __name__ == "__main__":
