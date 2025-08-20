@@ -1,14 +1,14 @@
 # Nanogptx: a "nanoGPT" Implementation in Pure JAX
 
 
-[![Release](https://img.shields.io/github/v/release/adonath/nanogpt-jax)](https://img.shields.io/github/v/release/adonath/nanogpt-jax)
-[![Build status](https://img.shields.io/github/actions/workflow/status/adonath/nanogpt-jax/main.yml?branch=main)](https://github.com/adonath/nanogpt-jax/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/adonath/nanogpt-jax/branch/main/graph/badge.svg)](https://codecov.io/gh/adonath/nanogpt-jax)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/adonath/nanogpt-jax)](https://img.shields.io/github/commit-activity/m/adonath/nanogpt-jax)
-[![License](https://img.shields.io/github/license/adonath/nanogpt-jax)](https://img.shields.io/github/license/adonath/nanogpt-jax)
+[![Release](https://img.shields.io/github/v/release/adonath/nanogptx)](https://img.shields.io/github/v/release/adonath/nanogptx)
+[![Build status](https://img.shields.io/github/actions/workflow/status/adonath/nanogptx/main.yml?branch=main)](https://github.com/adonath/nanogptx/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/adonath/nanogptx/branch/main/graph/badge.svg)](https://codecov.io/gh/adonath/nanogptx)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/adonath/nanogptx)](https://img.shields.io/github/commit-activity/m/adonath/nanogptx)
+[![License](https://img.shields.io/github/license/adonath/nanogptx)](https://img.shields.io/github/license/adonath/nanogptx)
 
 <p align="center">
-<img width="61.8%" src="https://raw.githubusercontent.com/adonath/nanogpt-jax/main/assets/nanogpt-jax.jpg" alt="Banner"/>
+<img width="61.8%" src="https://raw.githubusercontent.com/adonath/nanogptx/main/assets/nanogpt-jax.jpg" alt="Banner"/>
 </p>
 
 ## Purpose of this Repository
