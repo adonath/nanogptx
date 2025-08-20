@@ -1,4 +1,4 @@
-# Nanogptx: a "nanoGPT" Implementation in Pure JAX
+# NanoGTPX: A "nanoGPT" Implementation in Pure JAX
 
 
 [![Release](https://img.shields.io/github/v/release/adonath/nanogptx)](https://img.shields.io/github/v/release/adonath/nanogptx)
