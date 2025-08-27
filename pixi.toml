@@ -30,7 +30,6 @@ optax = ">=0.2.5,<0.3"
 tomli-w = ">=1.2.0, <2"
 clouseau = { git = "https://github.com/adonath/clouseau.git", branch = "main" }
 flash-attention-jax = ">=0.3.1, <0.4"
-nanogptx = { path = ".", editable = true }
 
 [feature.io.dependencies]
 fastparquet = ">=2024.11.0,<2025"
