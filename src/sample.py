@@ -38,23 +38,46 @@ class TokenSampler:
 
     def generate(self, model, tokens, rng_key):
         """Generate new tokens"""
-        for idx in range(self.max_new_tokens):
-            rng_key = jax.random.fold_in(rng_key, idx)
+        top_k = (
+            min(self.top_k, model.wte.vocab_size) if self.top_k is not None else None
+        )
 
-            if tokens.shape[Axis.sequence] <= model.config.block_size:
-                tokens = tokens[-model.config.block_size :, :]
+        n_tokens = tokens.shape[Axis.sequence]
+        width, width[Axis.sequence] = [(0, 0)] * tokens.ndim, (0, self.max_new_tokens)
+        tokens = jnp.pad(tokens, pad_width=width)
 
-            logits = model(tokens, is_training=False, rng_key=rng_key)
+        def sample(context, idx):
+            context_window = jax.lax.dynamic_slice_in_dim(
+                context,
+                idx - model.config.block_size,
+                model.config.block_size,
+                axis=Axis.sequence,
+            )
+            logits = model(context_window, rng_key=rng_key, is_training=False)
             logits = logits[:, -1:, :] / self.temperature
 
-            if self.top_k is not None:
-                v, _ = jax.lax.top_k(logits, min(self.top_k, logits.shape[-1]))
-                logits = logits.at[logits < v[..., [-1]]].set(-jnp.inf)
+            if top_k is not None:
+                values, indices = jax.lax.top_k(logits, top_k)
+            else:
+                values, indices = logits, jnp.arange(model.wte.vocab_size)
 
-            tokens_next = jax.random.categorical(rng_key, logits, axis=Axis.feature)
-            tokens = jnp.concatenate((tokens, tokens_next), axis=Axis.sequence)
+            probs = jax.nn.softmax(values, axis=Axis.feature)
 
-        return tokens
+            keys = jax.random.split(
+                jax.random.fold_in(rng_key, idx), context.shape[Axis.batch]
+            )
+            next_token = jax.vmap(jax.random.choice)(
+                keys,
+                indices[:, 0, :],
+                p=probs[:, 0, :],
+            )
+
+            context = context.at[:, idx].set(next_token)
+            return context, next_token
+
+        idxs = jnp.arange(n_tokens, n_tokens + self.max_new_tokens)
+        _, next_tokens = jax.lax.scan(sample, tokens, idxs)
+        return next_tokens.T
 
 
 # fmt: off
