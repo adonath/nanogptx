@@ -19,6 +19,7 @@ from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
 
+from download import PretrainedModels
 from utils import (
     PATH_DATA,
     JaxDevicesEnum,
@@ -55,16 +56,6 @@ dot_product_attention = (
     if not USE_FLASH_ATTENTION
     else dot_product_flash_attention
 )
-
-
-class PretrainedModels(str, Enum):
-    """Pretrained models"""
-
-    resume = "resume"
-    gpt2 = "gpt2"
-    gpt2_medium = "gpt2-medium"
-    gpt2_large = "gpt2-large"
-    gpt2_xl = "gpt2-xl"
 
 
 class Axis(int, Enum):

@@ -1,5 +1,6 @@
 import logging
 import tarfile
+from enum import StrEnum
 from itertools import product
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
@@ -8,9 +9,6 @@ from pathlib import Path
 import requests
 import tyro
 
-from model import PretrainedModels
-from prepare import DatasetEnum
-
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
@@ -18,11 +16,47 @@ DATA_PATH = Path(__file__).parent.parent / "data"
 
 N_THREADS_DEAFULT = cpu_count() // 2
 
+
+class DatasetEnum(StrEnum):
+    """Dataset enum"""
+
+    shakespeare = "shakespeare"
+    openwebtext = "openwebtext"
+    fineweb_10b = "fineweb-10b"
+    fineweb_100b = "fineweb-100b"
+    fineweb_edu_10b = "fineweb-edu-10b"
+    fineweb_edu_100b = "fineweb-edu-100b"
+    tinystories = "tinystories"
+    pile_uncopyrighted = "pile-uncopyrighted"
+
+
+class PretrainedModels(str, StrEnum):
+    """Pretrained models"""
+
+    resume = "resume"
+    gpt2 = "gpt2"
+    gpt2_medium = "gpt2-medium"
+    gpt2_large = "gpt2-large"
+    gpt2_xl = "gpt2-xl"
+
+
 MODEL_URLS = {
-    PretrainedModels.gpt2_medium: ["https://huggingface.co/openai-community/gpt2-medium/resolve/main/model.safetensors",  "https://huggingface.co/openai-community/gpt2-medium/resolve/main/config.json"],
-    PretrainedModels.gpt2_large: ["https://huggingface.co/openai-community/gpt2-large/resolve/main/model.safetensors", "https://huggingface.co/openai-community/gpt2-large/resolve/main/config.json"],
-    PretrainedModels.gpt2_xl: ["https://huggingface.co/openai-community/gpt2-xl/resolve/main/model.safetensors",  "https://huggingface.co/openai-community/gpt2-xl/resolve/main/config.json"],
-    PretrainedModels.gpt2: ["https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors", "https://huggingface.co/openai-community/gpt2/resolve/main/config.json"],
+    PretrainedModels.gpt2_medium: [
+        "https://huggingface.co/openai-community/gpt2-medium/resolve/main/model.safetensors",
+        "https://huggingface.co/openai-community/gpt2-medium/resolve/main/config.json",
+    ],
+    PretrainedModels.gpt2_large: [
+        "https://huggingface.co/openai-community/gpt2-large/resolve/main/model.safetensors",
+        "https://huggingface.co/openai-community/gpt2-large/resolve/main/config.json",
+    ],
+    PretrainedModels.gpt2_xl: [
+        "https://huggingface.co/openai-community/gpt2-xl/resolve/main/model.safetensors",
+        "https://huggingface.co/openai-community/gpt2-xl/resolve/main/config.json",
+    ],
+    PretrainedModels.gpt2: [
+        "https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors",
+        "https://huggingface.co/openai-community/gpt2/resolve/main/config.json",
+    ],
 }
 
 # fmt: off
@@ -119,9 +153,7 @@ def download(
     if model is not None:
         model = PretrainedModels(model)
         urls = MODEL_URLS[model]
-        paths = [
-            DATA_PATH / "models" / model.value / Path(url).name for url in urls
-        ]
+        paths = [DATA_PATH / "models" / model.value / Path(url).name for url in urls]
         args.extend(zip(urls, paths))
 
     if dataset is not None:

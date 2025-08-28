@@ -16,24 +16,12 @@ import tyro
 from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
 
+from download import DatasetEnum
 from utils import get_checksum
 
 log = logging.getLogger(__file__)
 
 PATH_DATA = Path(__file__).parent.parent / "data"
-
-
-class DatasetEnum(StrEnum):
-    """Dataset enum"""
-
-    shakespeare = "shakespeare"
-    openwebtext = "openwebtext"
-    fineweb_10b = "fineweb-10b"
-    fineweb_100b = "fineweb-100b"
-    fineweb_edu_10b = "fineweb-edu-10b"
-    fineweb_edu_100b = "fineweb-edu-100b"
-    tinystories = "tinystories"
-    pile_uncopyrighted = "pile-uncopyrighted"
 
 
 @dataclass
