@@ -6,8 +6,8 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-download = {cmd=["python", "src/download.py"]}
-prepare = {cmd=["python", "src/prepare.py"]}
+download = {cmd=["python", "src/download.py"], depends-on={environment="download"}}
+prepare = {cmd=["python", "src/prepare.py"], depends-on={environment="prepare"}}
 train = {cmd=["python", "src/train.py"]}
 sample = {cmd=["python", "src/sample.py"]}
 
