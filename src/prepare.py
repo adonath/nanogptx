@@ -10,7 +10,6 @@ from itertools import repeat
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
-import jax
 import numpy as np
 import tiktoken
 import tyro
@@ -88,7 +87,7 @@ def prepocess(document: str):
     return re.sub("\n\n\n+", "\n\n", document).strip()
 
 
-def tokenize(encoding, document) -> list[jax.Array]:
+def tokenize(encoding, document) -> list[np.ndarray]:
     """Tokenize a sequence"""
     eot = encoding._special_tokens["<|endoftext|>"]
 
