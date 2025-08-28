@@ -1,13 +1,15 @@
 [workspace]
-authors = ["Axel Donath <axel.donath@cfa.harvard.edu>"]
+authors = ["Axel Donath <mail@axeldonath.com>"]
 channels = ["conda-forge"]
-name = "from-scratch-in-jax-nano-gpt"
+name = "nanogptx"
 platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-download = {cmd=["python", "src/download.py"], depends-on={environment="download"}}
-prepare = {cmd=["python", "src/prepare.py"], depends-on={environment="prepare"}}
+_download = {cmd=["python", "src/download.py"]}
+download={depends-on=[{task="_download", environment="download"}]}
+_prepare = {cmd=["python", "src/prepare.py"]}
+prepare = {depends-on=[{task="_prepare", environment="prepare"}]}
 train = {cmd=["python", "src/train.py"]}
 sample = {cmd=["python", "src/sample.py"]}
 
