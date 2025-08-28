@@ -29,6 +29,7 @@ from utils import (
     DatasetEnum,
     EncodingEnum,
     PretrainedModels,
+    get_checksum,
     get_random_name,
 )
 from utils_jax import (
@@ -36,7 +37,6 @@ from utils_jax import (
     JaxFloatDtypesEnum,
     JaxIntDtypesEnum,
     flatten_pytree_with_path,
-    get_checksum,
     update_leave_from_mapping,
 )
 
