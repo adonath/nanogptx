@@ -4,7 +4,6 @@ import lzma
 import re
 import tarfile
 from dataclasses import dataclass
-from enum import StrEnum
 from functools import partial, reduce
 from itertools import repeat
 from multiprocessing import Pool, cpu_count
@@ -16,8 +15,7 @@ import tyro
 from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
 
-from download import DatasetEnum
-from utils import get_checksum
+from utils import DatasetEnum, EncodingEnum, get_checksum
 
 log = logging.getLogger(__file__)
 
@@ -231,11 +229,9 @@ READ_METHODS = {
 }
 
 ENCODINGS = {
-    "gpt2": tiktoken.get_encoding("gpt2"),
-    "char": CharEncoding.shakespeare(),
+    EncodingEnum.gpt2: tiktoken.get_encoding("gpt2"),
+    EncodingEnum.char: CharEncoding.shakespeare(),
 }
-
-EncodingEnum = StrEnum("EncodingEnum", list(ENCODINGS))
 
 DTYPES = {EncodingEnum.gpt2: np.uint16, EncodingEnum.char: np.uint16}
 

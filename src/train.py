@@ -22,17 +22,21 @@ from safetensors import safe_open
 from tqdm import tqdm
 
 import wandb
-from model import GPT, GPTConfig, PretrainedModels
-from prepare import DatasetEnum, EncodingEnum
+from model import GPT, GPTConfig
 from utils import (
     PATH_BASE,
     PATH_DATA,
+    DatasetEnum,
+    EncodingEnum,
+    PretrainedModels,
+    get_random_name,
+)
+from utils_jax import (
     JaxDevicesEnum,
     JaxFloatDtypesEnum,
     JaxIntDtypesEnum,
     flatten_pytree_with_path,
     get_checksum,
-    get_random_name,
     update_leave_from_mapping,
 )
 

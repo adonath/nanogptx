@@ -19,14 +19,12 @@ from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
 
-from download import PretrainedModels
-from utils import (
-    PATH_DATA,
+from utils import PATH_DATA, PretrainedModels, sizeof_fmt
+from utils_jax import (
     JaxDevicesEnum,
     JaxDtypesEnum,
     flatten_pytree_with_path,
     read_safetensors_header,
-    sizeof_fmt,
     update_leave_from_mapping,
 )
 

@@ -1,6 +1,5 @@
 import logging
 import tarfile
-from enum import StrEnum
 from itertools import product
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
@@ -9,35 +8,14 @@ from pathlib import Path
 import requests
 import tyro
 
+from utils import DatasetEnum, PretrainedModels
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 DATA_PATH = Path(__file__).parent.parent / "data"
 
-N_THREADS_DEAFULT = cpu_count() // 2
-
-
-class DatasetEnum(StrEnum):
-    """Dataset enum"""
-
-    shakespeare = "shakespeare"
-    openwebtext = "openwebtext"
-    fineweb_10b = "fineweb-10b"
-    fineweb_100b = "fineweb-100b"
-    fineweb_edu_10b = "fineweb-edu-10b"
-    fineweb_edu_100b = "fineweb-edu-100b"
-    tinystories = "tinystories"
-    pile_uncopyrighted = "pile-uncopyrighted"
-
-
-class PretrainedModels(StrEnum):
-    """Pretrained models"""
-
-    resume = "resume"
-    gpt2 = "gpt2"
-    gpt2_medium = "gpt2-medium"
-    gpt2_large = "gpt2-large"
-    gpt2_xl = "gpt2-xl"
+N_THREADS_DEFAULT = cpu_count() // 2
 
 
 MODEL_URLS = {
@@ -139,7 +117,7 @@ def download_file(url, path):
 def download(
     model: PretrainedModels | None = None,
     dataset: DatasetEnum | None = None,
-    n_threads: int = N_THREADS_DEAFULT,
+    n_threads: int = N_THREADS_DEFAULT,
 ):
     """Download GPT2 weights from Huggingface
 
