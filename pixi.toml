@@ -6,37 +6,47 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-download = {cmd=["python", "src/download.py"]}
-prepare = {cmd=["python", "src/prepare.py"]}
+download = {cmd=["python", "src/download.py"], env="download"}
+prepare = {cmd=["python", "src/prepare.py"], env="prepare"}
 train = {cmd=["python", "src/train.py"]}
 sample = {cmd=["python", "src/sample.py"]}
 
-[activation.env]
-JAX_TRACEBACK_FILTERING="off"
-JAX_COMPILATION_CACHE_DIR=".jax_cache"
-WANDB_API_KEY = "$WANDB_API_KEY"
 
 [dependencies]
-safetensors = ">=0.6.2,<0.7"
 python = ">=3.12.11,<3.14"
-requests = ">=2.32.5,<3"
-tiktoken = ">=0.9.0,<0.10"
 tqdm = ">=4.67.1,<5"
-wandb = ">=0.21.0,<0.22"
 tyro = ">=0.9.28,<0.10"
-optax = ">=0.2.5,<0.3"
 
 [pypi-dependencies]
 tomli-w = ">=1.2.0, <2"
-clouseau = { git = "https://github.com/adonath/clouseau.git", branch = "main" }
-flash-attention-jax = ">=0.3.1, <0.4"
+
+
+[feature.download.dependencies]
+requests = ">=2.32.5,<3"
+zstandard = "*"
+
 
 [feature.io.dependencies]
 fastparquet = ">=2024.11.0,<2025"
 pandas = ">=2.2.3,<3"
 
-[feature.notebook.dependencies]
-notebook = ">=7.1.4,<8"
+
+[feature.model.dependencies]
+tiktoken = ">=0.9.0,<0.10"
+safetensors = ">=0.6.2,<0.7"
+
+
+[feature.train.dependencies]
+wandb = ">=0.21.0,<0.22"
+optax = ">=0.2.5,<0.3"
+
+[feature.train.pypi-dependencies]
+flash-attention-jax = ">=0.3.1, <0.4"
+
+[feature.train.activation.env]
+JAX_TRACEBACK_FILTERING="off"
+JAX_COMPILATION_CACHE_DIR=".jax_cache"
+WANDB_API_KEY = "$WANDB_API_KEY"
 
 [feature.cpu.dependencies]
 jax = ">=0.5.0,<0.7"
@@ -61,8 +71,14 @@ jax-metal = ">=0.0.7"
 JAX_ENABLE_X64="0"
 ENABLE_PJRT_COMPATIBILITY="1"
 
+
+[feature.notebook.dependencies]
+notebook = ">=7.1.4,<8"
+
 [environments]
-cpu = ["cpu", "io"]
-gpu = ["gpu"]
-gpu-mps = ["gpu-mps"]
+download = ["download"]
+prepare = ["io", "model"]
+cpu = ["cpu", "model", "train"]
+gpu = ["gpu", "model", "train"]
+gpu-mps = ["gpu-mps",  "model", "train"]
 notebook = ["notebook", "cpu", "io"]
