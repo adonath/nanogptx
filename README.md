@@ -14,20 +14,20 @@
 ## Purpose of this Repository
 The purpose of this repository is mostly documenting my own learning progress on recent developments in AI. I first wanted to learn more transformers and the process of training LLMs and at the same time I wanted to learn about [JAX](https://docs.jax.dev/en/latest/). Give these goals a reasonable project was to re-implement **[nanoGPT](https://github.com/karpathy/nanoGPT) in pure JAX**. In the process I have found that I typically ended up with much cleaner code, compared to PyTorch. So I decided to split the code base up into smaller reusable and more modular parts. Now it can be used for **educational purposes, or as a clean and hackable starting point for small scale experiments on modified architecures, training strategies or experiments in interpretability**. I think cooking a new experiment needs to start from a clean lab, so **happy cooking**!
 
-**Note**: if you need minimal production grade implementations of LLMS you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples) or for large scale experiments and training checkout [Levanter](https://github.com/stanford-crfm/levanter), which is based on [Equinox](https://docs.kidger.site/equinox/).
+**Note**: if you need minimal production grade implementations of LLMs you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples) or for large scale experiments and training checkout [Levanter](https://github.com/stanford-crfm/levanter), which is based on [Equinox](https://docs.kidger.site/equinox/).
 
-## Features
+## NanoGPTX Features
 
 Here are some of the features of this implementation:
 
-- **Hierarchical configuration:** I do like hierarchical configuration as loNg as it is not too deep. The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. This might seem like a misue of the JAX PyTree system, but it is extremely simple and works rather well. It does type coercion to the default type on read so you get a minimal [Pydantic](https://docs.pydantic.dev/latest/) experience.
+- **Hierarchical configuration:** I do like hierarchical configuration as long as it is not too deep (3-4 levels max). The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. The configuration requires setting defaults and on I/O it does type coercion to the default type, to catch errors early.
 - **CLI:** after careful consideration I have decied to support a CLI via [tyro](https://brentyi.github.io/tyro/). The code overhead is minimal, as all the configuration is in dataclasses anyway. And tyro offers a nice default interface as well as nested commands.
-- **Abstract evaluation and lazy initialization:** I think it is useful to not full instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape and dtype errors early without and using any flops.
-- **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training.
+- **Abstract evaluation and lazy initialization:** I think it is useful to not full instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
+- **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
 - **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
 - **Sharding strategies**: TODO: support for configurable sharding strategies.
-- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and document cleaning
-- **Logging**: just as the original nanoGPT this project uses WandB for logging. I have considered alternatives (especially local solutions), but found other solutions introduce more complexity.
+- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and custom document cleaning / pre-processing.
+- **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
 
 ## Getting started
 This repositiry comes with mutiple pre-defined environmenst in a `pixi.toml` file. This makes ir very covenient to run the model in CPU, GPU and even TPU environments.
