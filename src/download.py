@@ -30,7 +30,7 @@ class DatasetEnum(StrEnum):
     pile_uncopyrighted = "pile-uncopyrighted"
 
 
-class PretrainedModels(str, StrEnum):
+class PretrainedModels(StrEnum):
     """Pretrained models"""
 
     resume = "resume"
