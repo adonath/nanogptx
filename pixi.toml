@@ -6,10 +6,8 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-_download = {cmd=["python", "src/download.py"]}
-download={depends-on=[{task="_download", environment="download"}]}
-_prepare = {cmd=["python", "src/prepare.py"]}
-prepare = {depends-on=[{task="_prepare", environment="prepare"}]}
+download = {cmd=["python", "src/download.py"]}
+prepare = {cmd=["python", "src/prepare.py"]}
 train = {cmd=["python", "src/train.py"]}
 sample = {cmd=["python", "src/sample.py"]}
 
@@ -18,25 +16,18 @@ sample = {cmd=["python", "src/sample.py"]}
 python = ">=3.12.11,<3.14"
 tqdm = ">=4.67.1,<5"
 tyro = ">=0.9.28,<0.10"
+tiktoken = ">=0.9.0,<0.10"
+safetensors = ">=0.6.2,<0.7"
+numpy = ">=2.3.2,<3"
+requests = ">=2.32.5,<3"
 
 [pypi-dependencies]
 tomli-w = ">=1.2.0, <2"
 
-
-[feature.download.dependencies]
-requests = ">=2.32.5,<3"
-zstandard = "*"
-
-
-[feature.prepare.dependencies]
+[feature.io.dependencies]
 fastparquet = ">=2024.11.0,<2025"
 pandas = ">=2.2.3,<3"
-numpy = ">=2.3.2,<3"
-
-
-[feature.model.dependencies]
-tiktoken = ">=0.9.0,<0.10"
-safetensors = ">=0.6.2,<0.7"
+zstandard = "*"
 
 
 [feature.train.dependencies]
@@ -79,9 +70,8 @@ ENABLE_PJRT_COMPATIBILITY="1"
 notebook = ">=7.1.4,<8"
 
 [environments]
-download = ["download"]
-prepare = ["prepare", "model"]
-cpu = ["cpu", "model", "train"]
-gpu = ["gpu", "model", "train"]
-gpu-mps = ["gpu-mps",  "model", "train"]
-notebook = ["notebook", "cpu", "model", "train"]
+prepare = ["io"]
+cpu = ["cpu", "train"]
+gpu = ["gpu", "train"]
+gpu-mps = ["gpu-mps",  "train"]
+notebook = ["notebook", "cpu"]
