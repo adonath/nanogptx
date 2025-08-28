@@ -41,6 +41,12 @@ class PretrainedModels(StrEnum):
     gpt2_xl = "gpt2-xl"
 
 
+InitFromEnum = StrEnum(
+    "InitFromEnum",
+    {_.name: _.value for _ in PretrainedModels} | {"scratch": "scratch"},
+)
+
+
 def get_checksum(array):
     """Compute a checksum for an array"""
     # TODO: replace by a checksum implementation that can be computed on a GPU
@@ -64,7 +70,7 @@ def sizeof_fmt(num, system="binary"):
     # fmt: off
     choice = {
         "binary": (("B", "KiB", "MiB", "GiB", "TiB"), 1024.0),
-        "decimal": (("K", "M", "B",), 1000.0)
+        "decimal": (("", "K", "M", "B",), 1000.0)
     }
     # fmt: on
 

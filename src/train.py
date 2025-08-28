@@ -1,4 +1,3 @@
-import enum
 import json
 import logging
 import os
@@ -28,7 +27,7 @@ from utils import (
     PATH_DATA,
     DatasetEnum,
     EncodingEnum,
-    PretrainedModels,
+    InitFromEnum,
     get_checksum,
     get_random_name,
 )
@@ -44,12 +43,6 @@ TAB_WIDTH = 4
 
 log = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
-
-InitFromEnum = enum.StrEnum(
-    "InitFrom",
-    {_.name: _.value for _ in PretrainedModels}
-    | {"scratch": "scratch", "resume": "resume"},
-)
 
 
 # fmt: off

@@ -14,11 +14,8 @@ from safetensors import safe_open
 from model import DEFAULT_DEVICE, GPT, Axis
 from prepare import DTYPES, ENCODINGS
 from train import InitFromEnum
-from utils import (
-    PATH_DATA,
-    JaxDevicesEnum,
-    JaxFloatDtypesEnum,
-)
+from utils import PATH_DATA
+from utils_jax import JaxDevicesEnum, JaxFloatDtypesEnum
 
 PREFIX = "FILE:"
 
