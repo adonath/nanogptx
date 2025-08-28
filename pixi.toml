@@ -6,8 +6,8 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-download = {cmd=["python", "src/download.py"], env="download"}
-prepare = {cmd=["python", "src/prepare.py"], env="prepare"}
+download = {cmd=["python", "src/download.py"]}
+prepare = {cmd=["python", "src/prepare.py"]}
 train = {cmd=["python", "src/train.py"]}
 sample = {cmd=["python", "src/sample.py"]}
 
@@ -26,9 +26,10 @@ requests = ">=2.32.5,<3"
 zstandard = "*"
 
 
-[feature.io.dependencies]
+[feature.prepare.dependencies]
 fastparquet = ">=2024.11.0,<2025"
 pandas = ">=2.2.3,<3"
+numpy = ">=2.3.2,<3"
 
 
 [feature.model.dependencies]
@@ -77,8 +78,8 @@ notebook = ">=7.1.4,<8"
 
 [environments]
 download = ["download"]
-prepare = ["io", "model"]
+prepare = ["prepare", "model"]
 cpu = ["cpu", "model", "train"]
 gpu = ["gpu", "model", "train"]
 gpu-mps = ["gpu-mps",  "model", "train"]
-notebook = ["notebook", "cpu", "io"]
+notebook = ["notebook", "cpu", "model", "train"]
