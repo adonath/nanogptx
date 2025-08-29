@@ -30,6 +30,7 @@ from utils import (
     InitFromEnum,
     get_checksum,
     get_random_name,
+    FLOPS_UNIT,
 )
 from utils_jax import (
     JaxDevicesEnum,
@@ -276,7 +277,7 @@ class Trainer:
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
                 # the key can be ignored here, because dropout is skipped
-                losses.append(loss_fn(model, batch, rng_key=rng_key, is_training=True))
+                losses.append(loss_fn(model, batch, rng_key=rng_key, is_training=True).astype(np.float32))
 
             return np.mean(losses)
 
@@ -288,7 +289,6 @@ class Trainer:
             model = optax.apply_updates(model, updates)
             return model, opt_state
 
-        # TODO: compute flops from train_step
         flops = model.flops(batch_size=data_loader_train.batch_size)
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
@@ -302,7 +302,7 @@ class Trainer:
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
-            fps = float("NaN")
+            mfu = float("NaN")
 
             for n_iter, batch in zip(
                 range(self.optimizer.max_iters), data_loader_train
@@ -316,9 +316,9 @@ class Trainer:
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
                     )
-                    lr = opt_state[1].hyperparams["learning_rate"]
+                    lr = float(opt_state[1].hyperparams["learning_rate"])
                     pbar.set_postfix_str(
-                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}, tfps: {fps/1e12:.3f}"
+                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}"
                     )
 
                     if self.wandb_log:
@@ -329,13 +329,15 @@ class Trainer:
                                 "loss-val": loss_val,
                                 "lr": lr,
                                 "shard": batch.idx_shard,
-                                "fps": fps,
+                                "mfu": mfu,
                             }
                         )
 
                 rng_key = jax.random.fold_in(rng_key, n_iter)
                 model, opt_state = train_step(model, opt_state, batch, rng_key)
-                fps = flops.per_iter / (time.perf_counter() - time_start)
+                
+                # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
+                mfu = 3 * flops.per_iter  / FLOPS_UNIT / (time.perf_counter() - time_start)
                 pbar.update(1)
 
         return model
