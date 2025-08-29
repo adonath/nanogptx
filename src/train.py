@@ -294,7 +294,11 @@ class Trainer:
             model = optax.apply_updates(model, updates)
             return model, opt_state
 
-        flops = model.flops(batch_size=data_loader_train.batch_size)
+        flops = model.flops(
+            batch_size=data_loader_train.batch_size,
+            dtype=data_loader_train.dtype,
+            sharding=data_loader_train.sharding_batch,
+        )
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
         data_loader_validate = data_loader_validate.iter(
@@ -497,7 +501,7 @@ if __name__ == "__main__":
         model = GPT.read(latest)
     else:
         model = GPT.from_pretrained(config.init_from)
-
+    
     log.info(f"{model.info()}")
     spec = {"device": config.sharding_replicated, "dtype": config.dtype.jax}
 

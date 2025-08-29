@@ -578,7 +578,7 @@ class GPT:
             use_bias=self.ln_f.bias is not None,
         )
 
-    def flops(self, batch_size=1, dtype=jnp.int32):
+    def flops(self, batch_size=1, dtype=jnp.int32, sharding=None):
         """Estimate number of flops per iteration"""
 
         def f(x):
@@ -588,13 +588,13 @@ class GPT:
             compiled = jax.jit(f).trace(x).lower().compile()
             return compiled.cost_analysis()["flops"]
 
-        x = jax.ShapeDtypeStruct((1, 1), dtype=dtype)
+        x = jax.ShapeDtypeStruct((1, 1), dtype=dtype, sharding=sharding)
         flops_per_token = get_flops(x)
 
-        x = jax.ShapeDtypeStruct((1, self.config.block_size), dtype=dtype)
+        x = jax.ShapeDtypeStruct((1, self.config.block_size), dtype=dtype, sharding=sharding)
         flops_per_fwdbwd = get_flops(x)
 
-        x = jax.ShapeDtypeStruct((batch_size, self.config.block_size), dtype=dtype)
+        x = jax.ShapeDtypeStruct((batch_size, self.config.block_size), dtype=dtype, sharding=sharding)
         flops_per_iter = get_flops(x)
 
         return Flops(
