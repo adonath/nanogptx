@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
 from pathlib import Path
 from typing import Literal
+from itertools import cycle
 
 import jax
 import numpy as np
@@ -179,6 +180,7 @@ class DatasetLoader:
     devices: Sequence[JaxDevicesEnum] = (tuple(JaxDevicesEnum)[0],) 
     seed: int = 8273
     dtype: JaxIntDtypesEnum = JaxIntDtypesEnum.int32
+    randomize_shards: bool = True
 
     @property
     def filenames(self):
@@ -212,10 +214,12 @@ class DatasetLoader:
     def iter(self, block_size):
         random_state = np.random.default_rng(self.seed)
 
-        while True:
-            # choose random shard
-            idx_shard = random_state.integers(self.n_shards)
+        shards = np.arange(self.n_shards)
 
+        if self.randomize_shards:
+            shards = random_state.permutation(shards)
+
+        for idx_shard in cycle(shards):
             filename, checksum = (
                 self.filenames[idx_shard]["name"],
                 self.filenames[idx_shard]["checksum"],
@@ -258,6 +262,7 @@ class Trainer:
     )
     show_progress: bool = True  # show progress bar
     wandb_log: bool = False
+    total_batch_size: int = 256 # total batch size in units of tokens
 
     def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
@@ -364,6 +369,12 @@ class Config:
 
         # TODO: which gets precendence here data or model definition?
         self.loading.devices = self.devices
+
+        # calculate the gradient accumulation based on total batch size
+        tokens_per_iter = self.model.block_size * self.loading.batch_size
+        accum_steps = self.training.total_batch_size // tokens_per_iter
+        log.info(f"Using {accum_steps} grad accumualtion steps.")
+        self.training.optimizer.gradient_accumulation_steps = accum_steps
 
     @property
     def mesh_jax(self):
