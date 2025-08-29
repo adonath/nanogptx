@@ -54,9 +54,8 @@ cuda = "12"
 [feature.gpu.activation.env]
 JAX_DEFAULT_MATMUL_PRECISION="float32"
 
-[feature.gpu.target.linux-64.dependencies]
-jax = ">=0.5.0,<0.8"
-jaxlib={ version = "*", build = "*cuda*" }
+[feature.gpu.target.linux-64.pypi-dependencies]
+jax = { version = ">=0.7.1, <0.8", extras = ["cuda12"] }
 
 [feature.gpu-mps.target.osx-arm64.pypi-dependencies]
 jax = ">=0.5.0"
