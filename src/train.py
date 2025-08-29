@@ -176,7 +176,7 @@ class DatasetLoader:
     batch_size: int = 16
     block_size: int = 1024
     verify: bool = True
-    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
+    devices: Sequence[JaxDevicesEnum] = (tuple(JaxDevicesEnum)[0],) 
     seed: int = 8273
     dtype: JaxIntDtypesEnum = JaxIntDtypesEnum.int32
 
@@ -350,7 +350,7 @@ class Config:
 
     init_from: InitFromEnum = InitFromEnum.scratch
     seed: int = 9283  # Random seed
-    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
+    devices: Sequence[JaxDevicesEnum] = (tuple(JaxDevicesEnum)[0],) 
     dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
     loading: DatasetLoader = field(default_factory=DatasetLoader)
@@ -477,8 +477,6 @@ if __name__ == "__main__":
     log.info(
         f"Validation dataset has {data_loader_validate.index.n_tokens_total} tokens."
     )
-
-    config.model.vocab_size = config.loading.index.n_vocab
 
     if config.init_from == InitFromEnum.scratch:
         model = GPT.from_config(config.model)
