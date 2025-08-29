@@ -5,7 +5,6 @@ import re
 import tarfile
 from dataclasses import dataclass
 from functools import partial, reduce
-from itertools import repeat
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from tqdm import tqdm
 from utils import DatasetEnum, EncodingEnum, get_checksum
 
 log = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 PATH_DATA = Path(__file__).parent.parent / "data"
 
@@ -92,13 +92,16 @@ def read_txt_shakespeare(filename) -> list[str]:
     return data.split("\n\n")
 
 
-def read_xz_from_tar(tar_path, xz_filename) -> list[str]:
+def read_xz_from_tar(filename) -> list[str]:
     """Read a tarfile and extract the compressed content"""
+    data = []
 
-    with tarfile.open(tar_path, "r") as tar:
-        xz_file = tar.extractfile(xz_filename)
-        decompressed_data = lzma.decompress(xz_file.read())
-        data = decompressed_data.decode("utf-8")
+    log.info(f"Reading {filename}")
+    with tarfile.open(filename, "r") as tar:
+        for xz_filename in tar.getnames():
+            xz_file = tar.extractfile(xz_filename)
+            decompressed_data = lzma.decompress(xz_file.read())
+            data.append(decompressed_data.decode("utf-8"))
 
     return data
 
@@ -193,28 +196,17 @@ def write_summary(path, shards_val_idxs):
         json.dump(data, json_file, indent=4)
 
 
-def expand_filenames_openwebtext(filenames):
-    """Return the expanded filenames"""
-    filenames_expanded = []
-
-    for filename in filenames:
-        with tarfile.open(filename, "r") as tar:
-            names = tar.getnames()
-            filenames_expanded.extend(zip(repeat(filename), names))
-
-    return filenames_expanded
-
-
 def apply(pipeline, filename):
     """Apply pipeline steps in series"""
 
-    def step(x, f):
-        if isinstance(x, Path):
+    def step(x, args):
+        name, f = args
+        if isinstance(x, (Path, tuple)):
             return f(x)
 
-        return list(map(f, x))
+        return list(map(f, tqdm(x, desc=f"{name.title()} {filename.name}", position=1)))
 
-    return reduce(step, pipeline, filename)
+    return reduce(step, pipeline.items(), filename)
 
 
 READ_METHODS = {
@@ -254,16 +246,13 @@ def prepare(config):
     """Prepare and tokenize data"""
     encoding = ENCODINGS[config.encoding]
 
-    steps = [
-        READ_METHODS[config.dataset],
-        prepocess,
-        partial(tokenize, encoding),
-    ]
+    steps = {
+        "read": READ_METHODS[config.dataset],
+        "preprocess": prepocess,
+        "tokenize": partial(tokenize, encoding),
+    }
 
     filenames = list((PATH_DATA / f"download/{config.dataset}").glob("*.*"))
-
-    if config.dataset == DatasetEnum.openwebtext:
-        filenames = expand_filenames_openwebtext(filenames)
 
     log.info(f"Found {len(filenames)} files to process.")
     path = PATH_DATA / "train" / f"{config.dataset}-{config.encoding}"
@@ -273,6 +262,7 @@ def prepare(config):
         total=config.shard_size,
         disable=not config.show_progress,
         unit="tokens",
+        position=0,
     )
 
     with tqdm(**kwargs) as pbar, Pool(config.n_process) as pool:
