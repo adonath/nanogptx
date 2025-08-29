@@ -233,6 +233,15 @@ class Embedding:
         """Number of embeddings"""
         return self.weight.shape[EmbeddingAxis.embd]
 
+    @staticmethod
+    def pad_to_multiple_of(x, multiple=128, value=jnp.nan):
+        """Pad to multiple of"""
+        vocab_size = x.shape[EmbeddingAxis.vocab]
+        new_vocab_size = ((vocab_size + multiple - 1) // multiple) * multiple
+        padding = new_vocab_size - vocab_size
+        width, width[EmbeddingAxis.vocab] = [(0, 0)] * x.ndim, (0, padding)
+        return jnp.pad(x, width, constant_values=value, mode="constant")
+
     @classmethod
     def from_n_features(
         cls,
