@@ -618,13 +618,14 @@ class GPT:
         def add_size(a, b, name="size"):
             return getattr(a, name, a) + getattr(b, name, b)
 
-        n_parameters = jax.tree.reduce(add_size, self)
-        n_bytes = jax.tree.reduce(partial(add_size, name="nbytes"), self)
+        n_parameters = jax.tree.reduce_associative(add_size, self)
+        n_bytes = jax.tree.reduce_associative(partial(add_size, name="nbytes"), self)
 
         if non_embedding:
             n_parameters -= self.wpe.weight.size
             n_bytes -= self.wpe.weight.nbytes
 
+        n_parameters -= self.lm_head.weight.size
         return GPTInfo(
             n_parameters=n_parameters,
             n_bytes=n_bytes,
