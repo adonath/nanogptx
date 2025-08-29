@@ -32,10 +32,9 @@ zstandard = "*"
 
 [feature.train.dependencies]
 wandb = ">=0.21.0,<0.22"
-optax = ">=0.2.5,<0.3"
 
 [feature.train.pypi-dependencies]
-flash-attention-jax = ">=0.3.1, <0.4"
+optax = ">=0.2.5,<0.3"
 
 [feature.train.activation.env]
 JAX_TRACEBACK_FILTERING="off"
@@ -52,10 +51,10 @@ XLA_FLAGS = '--xla_force_host_platform_device_count=8' # useful for development 
 cuda = "12"
 
 [feature.gpu.activation.env]
-JAX_DEFAULT_MATMUL_PRECISION="float32"
+JAX_DEFAULT_MATMUL_PRECISION="bfloat16"
 
 [feature.gpu.target.linux-64.pypi-dependencies]
-jax = { version = ">=0.7.1, <0.8", extras = ["cuda12"] }
+jax = { version = ">=0.5.0, <0.8", extras = ["cuda12"] }
 
 [feature.gpu-mps.target.osx-arm64.pypi-dependencies]
 jax = ">=0.5.0"
