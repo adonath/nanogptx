@@ -238,7 +238,7 @@ class DataPreparationConfig:
     encoding: EncodingEnum = EncodingEnum.gpt2
     dataset: DatasetEnum = DatasetEnum.shakespeare
     n_process: int = max(1, cpu_count() - 2)
-    chunksize: int = 16
+    chunksize: int = 1
     show_progress: bool = True
     write_summary_only: bool = False  # write summary statistics json file
 
