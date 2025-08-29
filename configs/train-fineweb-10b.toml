@@ -1,0 +1,56 @@
+init_from = "scratch"
+seed = 9283
+devices = [
+    "cuda:3",
+]
+dtype = "bfloat16"
+
+[training]
+log_interval = 1
+eval_interval = 500
+eval_iters = 3
+always_save_checkpoint = true
+show_progress = true
+wandb_log = false
+total_batch_size = 524288
+
+[training.optimizer]
+learning_rate = 0.0006
+max_iters = 20000
+weight_decay = 0.0
+beta1 = 0.9
+beta2 = 0.95
+grad_clip = 1.0
+decay_lr = true
+warmup_iters = 700
+lr_decay_iters = 20000
+min_lr = 6e-05
+
+[loading]
+batch_size = 64
+verify = true
+devices = [
+    "cuda:3",
+]
+seed = 8273
+dtype = "int32"
+
+[loading.index]
+dataset = "fineweb-10b"
+encoding = "gpt2"
+suffix = "train"
+
+[model]
+block_size = 1024
+vocab_size = 50304
+n_layer = 12
+n_head = 12
+n_embd = 768
+dropout_rate = 0.0
+use_bias = false
+init_std = 0.02
+
+[logging]
+wandb_log = false
+wandb_project = "nanogptx"
+wandb_run_name = "xeric-xebu"
