@@ -5,7 +5,7 @@ import re
 import tarfile
 from dataclasses import dataclass
 from functools import partial, reduce
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, get_logger, log_to_stderr
 from pathlib import Path
 
 import numpy as np
@@ -96,7 +96,6 @@ def read_xz_from_tar(filename) -> list[str]:
     """Read a tarfile and extract the compressed content"""
     data = []
 
-    log.info(f"Reading {filename}")
     with tarfile.open(filename, "r") as tar:
         for xz_filename in tar.getnames():
             xz_file = tar.extractfile(xz_filename)
@@ -198,10 +197,12 @@ def write_summary(path, shards_val_idxs):
 
 def apply(pipeline, filename):
     """Apply pipeline steps in series"""
+    log = get_logger()
 
     def step(x, args):
         name, f = args
-        if isinstance(x, (Path, tuple)):
+        if isinstance(x, Path):
+            log.info(f"Reading {x}")
             return f(x)
 
         return list(map(f, tqdm(x, desc=f"{name.title()} {filename.name}", position=1)))
@@ -257,6 +258,8 @@ def prepare(config):
     log.info(f"Found {len(filenames)} files to process.")
     path = PATH_DATA / "train" / f"{config.dataset}-{config.encoding}"
     path.mkdir(parents=True, exist_ok=True)
+
+    log_to_stderr(logging.INFO)
 
     kwargs = dict(
         total=config.shard_size,
