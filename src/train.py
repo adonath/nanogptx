@@ -226,7 +226,7 @@ class DatasetLoader:
             )
 
             with safe_open(filename, framework="numpy", device="cpu") as f:
-                # TODO: load straight to device for zero copy
+                # TODO: load straight to device for zero copy, see also https://github.com/huggingface/safetensors/issues/636
                 log.info(f"Reading {filename}")
                 data = f.get_tensor("tokens")
 
@@ -234,7 +234,7 @@ class DatasetLoader:
                     raise ValueError(f"Checksum does not agree for {filename}")
 
             # we aim for a statistical coverage here...
-            for _ in range(len(data) // self.batch_size):
+            for _ in range(len(data) // self.batch_size // block_size):
                 max_val = len(data) - block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
@@ -266,6 +266,8 @@ class Trainer:
 
     def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
+
+        log.info(f"Using {self.optimizer.gradient_accumulation_steps} grad accumulation steps.")
 
         def loss_fn(model, batch, rng_key, is_training):
             """Loss function"""
@@ -377,7 +379,6 @@ class Config:
         # calculate the gradient accumulation based on total batch size
         tokens_per_iter = self.model.block_size * self.loading.batch_size
         accum_steps = self.training.total_batch_size // tokens_per_iter
-        log.info(f"Using {accum_steps} grad accumualtion steps.")
         self.training.optimizer.gradient_accumulation_steps = accum_steps
 
     @property

@@ -325,6 +325,7 @@ class Gelu:
 
     approximate: bool = field(default=True, metadata=dict(static=True))
 
+    @jax.checkpoint
     def __call__(self, x):
         return jax.nn.gelu(x, approximate=self.approximate)
 
