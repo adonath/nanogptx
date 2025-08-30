@@ -23,6 +23,7 @@ requests = ">=2.32.5,<3"
 
 [pypi-dependencies]
 tomli-w = ">=1.2.0, <2"
+dacite = ">=1.9.2, <2"
 
 [feature.io.dependencies]
 fastparquet = ">=2024.11.0,<2025"
