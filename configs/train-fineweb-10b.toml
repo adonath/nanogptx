@@ -1,9 +1,15 @@
 init_from = "scratch"
 seed = 9283
+dtype = "bfloat16"
+
+[sharding]
 devices = [
+    "cuda:1",
     "cuda:3",
 ]
-dtype = "bfloat16"
+axis_names = ["batch",]
+axis_shapes = [2,]
+partition = []
 
 [training]
 log_interval = 1
@@ -29,11 +35,17 @@ min_lr = 6e-05
 [loading]
 batch_size = 32
 verify = true
-devices = [
-    "cuda:3",
-]
 seed = 8273
 dtype = "int32"
+
+[loading.sharding]
+devices = [
+    "cuda:1",
+    "cuda:3",
+]
+axis_names = ["batch",]
+axis_shapes = [2,]
+partition = ["batch",]
 
 [loading.index]
 dataset = "fineweb-10b"

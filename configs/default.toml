@@ -1,9 +1,15 @@
 init_from = "scratch"
 seed = 9283
-devices = [
-    "tfrt_cpu_0",
-]
 dtype = "float32"
+
+[sharding]
+devices = [
+    "cuda:0",
+]
+axis_names = []
+axis_shapes = [
+    1,
+]
 
 [training]
 log_interval = 1
@@ -12,6 +18,7 @@ eval_iters = 3
 always_save_checkpoint = true
 show_progress = true
 wandb_log = false
+total_batch_size = 256
 
 [training.optimizer]
 learning_rate = 0.0006
@@ -23,23 +30,32 @@ grad_clip = 1.0
 decay_lr = true
 warmup_iters = 2000
 lr_decay_iters = 600000
-gradient_accumulation_steps = 40
+gradient_accumulation_steps = 0
 min_lr = 6e-05
 
 [loading]
 batch_size = 16
 block_size = 1024
 verify = true
-devices = [
-    "tfrt_cpu_0",
-]
 seed = 8273
 dtype = "int32"
+randomize_shards = true
 
 [loading.index]
 dataset = "openwebtext"
 encoding = "gpt2"
 suffix = "train"
+
+[loading.sharding]
+devices = [
+    "cuda:0",
+]
+axis_names = [
+    "batch",
+]
+axis_shapes = [
+    1,
+]
 
 [model]
 block_size = 1024
@@ -47,11 +63,12 @@ vocab_size = 50304
 n_layer = 12
 n_head = 12
 n_embd = 768
-dropout_rate = 0.0
-use_bias = false
+dropout_rate = 0.1
+use_bias = true
 init_std = 0.02
 
 [logging]
 wandb_log = false
 wandb_project = "nanogptx"
-wandb_run_name = "xeric-xebu"
+wandb_run_name = "rebel-ratel"
+wandb_tags = []
