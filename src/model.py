@@ -589,10 +589,10 @@ class GPT:
             compiled = jax.jit(f).trace(x).lower().compile()
             return compiled.cost_analysis()["flops"]
 
-        x = jax.ShapeDtypeStruct((1, 1), dtype=dtype, sharding=sharding)
+        x = jax.ShapeDtypeStruct((1, 1), dtype=dtype)
         flops_per_token = get_flops(x)
 
-        x = jax.ShapeDtypeStruct((1, self.config.block_size), dtype=dtype, sharding=sharding)
+        x = jax.ShapeDtypeStruct((1, self.config.block_size), dtype=dtype)
         flops_per_fwdbwd = get_flops(x)
 
         x = jax.ShapeDtypeStruct((batch_size, self.config.block_size), dtype=dtype, sharding=sharding)

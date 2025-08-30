@@ -10,6 +10,7 @@ import jax
 from jax import numpy as jnp
 from jax import tree_util
 from jax.sharding import NamedSharding, PartitionSpec
+from jax.debug import visualize_sharding
 
 log = logging.getLogger(__name__)
 
@@ -167,3 +168,8 @@ class ShardingConfig:
     def jax(self):
         """Return named sharding"""
         return NamedSharding(self.mesh_jax, PartitionSpec(*self.partition))
+
+    def visualize(self, **kwargs):
+        """Visualize sharding"""
+        visualize_sharding(self.axis_shapes, self.jax, **kwargs)
+    
