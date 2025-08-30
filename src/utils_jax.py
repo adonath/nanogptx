@@ -3,10 +3,13 @@ import logging
 import struct
 from enum import StrEnum
 from functools import partial
+from dataclasses import dataclass
+from typing import Sequence
 
 import jax
 from jax import numpy as jnp
 from jax import tree_util
+from jax.sharding import NamedSharding, PartitionSpec
 
 log = logging.getLogger(__name__)
 
@@ -132,17 +135,35 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
         if info is None:
             log.debug(f"No value found for `{key}`, setting to `None`")
             return None
-
-        if not isinstance(info, type(leave)):
-            try:
-                # this requires the leave to be callable...
-                info = type(leave)(info)
-            except ValueError as e:
-                message = (
-                    f"Failed parsing `{info}` as `{type(leave)}` at path `{key}`, {e}"
-                )
-                raise ValueError(message)
-
+  
         return info
 
     return update
+
+
+@dataclass(frozen=True)
+class ShardingConfig:
+    """Configurable sharding"""
+    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
+    axis_names: Sequence[str] = ("batch",)
+    axis_shapes: Sequence[int] = (len(JaxDevicesEnum),)
+    partition: Sequence[str] = ("batch",)
+
+    @property
+    def mesh_jax(self):
+        """Mesh over the batch axis for distributed parallel data training"""
+        return jax.make_mesh(
+            axis_shapes=self.axis_shapes,
+            axis_names=self.axis_names,
+            devices=self.devices_jax,
+        )
+
+    @property
+    def devices_jax(self):
+        """Return actual device"""
+        return [_.jax for _ in self.devices]
+
+    @property
+    def jax(self):
+        """Return named sharding"""
+        return NamedSharding(self.mesh_jax, PartitionSpec(*self.partition))

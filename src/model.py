@@ -179,13 +179,13 @@ class ArrayInfo:
         """Size in number of bytes"""
         return self.size * jnp.dtype(self.dtype).itemsize
 
-    def to_value(self, rng_key, dtype=None, device=None):
+    def to_value(self, rng_key, dtype=None, out_sharding=None):
         """Initialize to value"""
         result = self.init(
             key=rng_key,
             shape=self.shape,
             dtype=self.dtype.jax if dtype is None else dtype,
-            out_sharding=self.out_sharding.jax if device is None else device,
+            out_sharding=self.out_sharding.jax if out_sharding is None else out_sharding,
         )
         return self.post_init(result)
 
@@ -199,7 +199,7 @@ class ArrayInfo:
         return cls(init=init, shape=meta["shape"], dtype=meta["dtype"])
 
 
-def init_array_leaves(rng_key, dtype=None, device=None):
+def init_array_leaves(rng_key, dtype=None, out_sharding=None):
     """State base callable"""
 
     def init(leave):
@@ -209,7 +209,7 @@ def init_array_leaves(rng_key, dtype=None, device=None):
             if leave.init is None:
                 return None
             rng_key, subkey = jax.random.split(rng_key)
-            return leave.to_value(subkey, dtype=dtype, device=device)
+            return leave.to_value(subkey, dtype=dtype, out_sharding=out_sharding)
 
         return leave
 
@@ -656,7 +656,7 @@ class GPT:
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=None, device=None):
         """Init arrays of the model"""
         # TODO: do an abstract evaluation of the shape, dtypes and shardings here?
-        init_arrays = init_array_leaves(rng_key=rng_key, dtype=dtype, device=device)
+        init_arrays = init_array_leaves(rng_key=rng_key, dtype=dtype, out_sharding=device)
         return jax.tree.map(
             init_arrays, self, is_leaf=lambda _: isinstance(_, ArrayInfo)
         )

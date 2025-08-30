@@ -9,6 +9,7 @@ from functools import cached_property, partial
 from pathlib import Path
 from typing import Literal
 from itertools import cycle
+from dacite import from_dict, Config as DaciteConfig
 
 import jax
 import numpy as np
@@ -17,7 +18,6 @@ import tomli_w
 import tomllib
 import tyro
 from jax import tree_util
-from jax.sharding import NamedSharding, PartitionSpec
 from safetensors import safe_open
 from tqdm import tqdm
 
@@ -35,6 +35,8 @@ from utils import (
 )
 from utils_jax import (
     JaxDevicesEnum,
+    JaxDtypesEnum,
+    ShardingConfig,
     JaxFloatDtypesEnum,
     JaxIntDtypesEnum,
     flatten_pytree_with_path,
@@ -177,7 +179,7 @@ class DatasetLoader:
     batch_size: int = 16
     block_size: int = 1024
     verify: bool = True
-    devices: Sequence[JaxDevicesEnum] = (tuple(JaxDevicesEnum)[0],) 
+    sharding: ShardingConfig = ShardingConfig()
     seed: int = 8273
     dtype: JaxIntDtypesEnum = JaxIntDtypesEnum.int32
     randomize_shards: bool = True
@@ -186,25 +188,6 @@ class DatasetLoader:
     def filenames(self):
         """Absolute filenames of the loader"""
         return self.index.filenames_absolute
-
-    @property
-    def mesh_jax(self):
-        """Mesh over the batch axis for distributed parallel data training"""
-        return jax.make_mesh(
-            axis_shapes=(len(self.devices),),
-            axis_names=("batch",),
-            devices=self.devices_jax,
-        )
-
-    @property
-    def devices_jax(self):
-        """Return actual device"""
-        return [_.jax for _ in self.devices]
-
-    @property
-    def sharding_batch(self):
-        """Batch sharding"""
-        return NamedSharding(self.mesh_jax, PartitionSpec(*self.mesh_jax.axis_names))
 
     @property
     def n_shards(self):
@@ -241,8 +224,8 @@ class DatasetLoader:
                 x = np.stack([data[i : i + block_size] for i in idx_batches])
                 y = np.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
                 yield Batch(
-                    x=jax.device_put(x, self.sharding_batch),
-                    y=jax.device_put(y, self.sharding_batch),
+                    x=jax.device_put(x, self.sharding.jax),
+                    y=jax.device_put(y, self.sharding.jax),
                     idx_shard=idx_shard,
                     idx_batches=idx_batches,
                 )
@@ -267,7 +250,7 @@ class Trainer:
     def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
 
-        log.info(f"Using {self.optimizer.gradient_accumulation_steps} grad accumulation steps.")
+        log.info(f"Using {self.optimizer.gradient_accumulation_steps} gradient accumulation steps.")
 
         def loss_fn(model, batch, rng_key, is_training):
             """Loss function"""
@@ -299,7 +282,7 @@ class Trainer:
         flops = model.flops(
             batch_size=data_loader_train.batch_size,
             dtype=data_loader_train.dtype,
-            sharding=data_loader_train.sharding_batch,
+            sharding=data_loader_train.sharding.jax,
         )
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
@@ -361,7 +344,7 @@ class Config:
 
     init_from: InitFromEnum = InitFromEnum.scratch
     seed: int = 9283  # Random seed
-    devices: Sequence[JaxDevicesEnum] = (tuple(JaxDevicesEnum)[0],) 
+    sharding: ShardingConfig = ShardingConfig(partition=())
     dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
     loading: DatasetLoader = field(default_factory=DatasetLoader)
@@ -373,32 +356,10 @@ class Config:
         # sync arguments after init
         self.training.wandb_log = self.logging.wandb_log
 
-        # TODO: which gets precendence here data or model definition?
-        self.loading.devices = self.devices
-
         # calculate the gradient accumulation based on total batch size
         tokens_per_iter = self.model.block_size * self.loading.batch_size
         accum_steps = self.training.total_batch_size // tokens_per_iter
         self.training.optimizer.gradient_accumulation_steps = accum_steps
-
-    @property
-    def mesh_jax(self):
-        """Mesh over the batch axis for distributed parallel data training"""
-        return jax.make_mesh(
-            axis_shapes=(len(self.devices),),
-            axis_names=("batch",),
-            devices=self.devices_jax,
-        )
-
-    @property
-    def sharding_replicated(self):
-        """Replicated sharding"""
-        return NamedSharding(self.mesh_jax, PartitionSpec())
-
-    @property
-    def devices_jax(self):
-        """Return actual device"""
-        return [_.jax for _ in self.devices]
 
     @property
     def rng_key(self) -> jax.Array:
@@ -429,11 +390,11 @@ class Config:
                 return cls.from_safetensors_meta(f.metadata())
 
         with path.open("rb") as f:
-            data = flatten_pytree_with_path(tomllib.load(f))
+            data = tomllib.load(f)
 
-        return jax.tree.map_with_path(
-            update_leave_from_mapping(data, use_default_if_missing=True), cls()
-        )
+        config = DaciteConfig(cast=[InitFromEnum, JaxFloatDtypesEnum, DatasetEnum, JaxDevicesEnum, JaxDtypesEnum, JaxIntDtypesEnum, EncodingEnum])
+
+        return from_dict(data_class=cls, data=data, config=config)
 
     @classmethod
     def from_safetensors_meta(cls, data):
@@ -504,7 +465,8 @@ if __name__ == "__main__":
         model = GPT.from_pretrained(config.init_from)
     
     log.info(f"{model.info()}")
-    spec = {"device": config.sharding_replicated, "dtype": config.dtype.jax}
+
+    spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
 
     model = config.training.train(
         model=model.init(rng_key=config.rng_key, **spec),
