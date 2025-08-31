@@ -44,6 +44,15 @@ from utils_jax import (
 )
 
 TAB_WIDTH = 4
+DACITE_ENUMS = [
+    InitFromEnum,
+    JaxFloatDtypesEnum,
+    DatasetEnum,
+    JaxDevicesEnum,
+    JaxDtypesEnum,
+    JaxIntDtypesEnum,
+    EncodingEnum,
+]
 
 log = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -400,21 +409,7 @@ class Config:
         with path.open("rb") as f:
             data = tomllib.load(f)
 
-        if cast_enum:
-            config = DaciteConfig(
-                cast=[
-                    InitFromEnum,
-                    JaxFloatDtypesEnum,
-                    DatasetEnum,
-                    JaxDevicesEnum,
-                    JaxDtypesEnum,
-                    JaxIntDtypesEnum,
-                    EncodingEnum,
-                ]
-            )
-        else:
-            config = None
-
+        config = DaciteConfig(cast=DACITE_ENUMS) if cast_enum else None
         return from_dict(data_class=cls, data=data, config=config)
 
     @classmethod
