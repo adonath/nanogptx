@@ -447,7 +447,7 @@ def get_configs():
     for filename in filenames:
         configs[filename.stem] = (
             f"Default configuration from {filename.name}",
-            Config.read(filename, cast_enum=False),
+            Config.read(filename),
         )
 
     return configs

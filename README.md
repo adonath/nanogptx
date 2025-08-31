@@ -16,6 +16,32 @@ The purpose of this repository is mostly documenting my own learning progress on
 
 **Note**: if you need minimal production grade implementations of LLMs you might rather want to check out [official JAX LLM examples](https://github.com/jax-ml/jax-llm-examples) or for large scale experiments and training checkout [Levanter](https://github.com/stanford-crfm/levanter), which is based on [Equinox](https://docs.kidger.site/equinox/).
 
+## Getting started
+This repositiry comes with mutiple pre-defined environmenst in a `pixi.toml` file. This makes it very covenient to run the model in CPU, GPU and even TPU (not yet) environments.
+To get started, you first [install pixi](https://pixi.sh/latest/installation/).
+
+### Training a Small Model on Shakespeare
+To train a small transformer model with character level encoding on the "tiny Shakespeare" dataset you can use:
+
+```bash
+pixi run download --dataset shakespeare
+pixi run prepare --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1
+pixi run train --environment cpu train-shakespeare-char
+pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
+```
+The workflow always consists of those four steps. The training should finish in <2 minutes on a M1 type machine.
+
+
+### Training a GPT2 124m Fineweb10b Model
+To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for example:
+```bash
+pixi run download --dataset fineweb_10b
+pixi run prepare --dataset fineweb_10b
+pixi run train  --environment gpu train-fineweb-10b --sharding.devices cuda:0,cuda:1 --loading.sharding.devices cuda:0,cuda:1
+pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
+```
+`nanogptx` supports a simple SPMD (single program multiple data) distribution strategy, meaning groups of batches are evaluated in parallel on the configured devices.
+
 ## NanoGPTX Features
 
 Here are some of the features of this implementation:
@@ -25,21 +51,9 @@ Here are some of the features of this implementation:
 - **Abstract evaluation and lazy initialization:** I think it is useful to not fully instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
 - **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
 - **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
-- **Sharding strategies**: TODO: support for configurable sharding strategies.
+- **Sharding strategies**: Currently on SPMD is supported, other strategies might follow.
 - **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and custom document cleaning / pre-processing.
 - **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
-
-## Getting started
-This repositiry comes with mutiple pre-defined environmenst in a `pixi.toml` file. This makes ir very covenient to run the model in CPU, GPU and even TPU environments.
-
-To get started you first [install pixi](https://pixi.sh/latest/installation/). Then you can just execute:
-
-```bash
-pixi run download --dataset shakespeare
-pixi run prepare --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1
-pixi run train train-shakespeare-char
-pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
-```
 
 ## How to work with this Repository
 This repository can bes used as template for your own small to mid-scale projects.
