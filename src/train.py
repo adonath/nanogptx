@@ -409,7 +409,11 @@ class Config:
         with path.open("rb") as f:
             data = tomllib.load(f)
 
-        config = DaciteConfig(cast=DACITE_ENUMS) if cast_enum else None
+        config = (
+            DaciteConfig(cast=DACITE_ENUMS)
+            if cast_enum
+            else DaciteConfig(check_types=False)
+        )
         return from_dict(data_class=cls, data=data, config=config)
 
     @classmethod
