@@ -3,10 +3,6 @@ seed = 9283
 dtype = "bfloat16"
 
 [sharding]
-devices = [
-    "cuda:1",
-    "cuda:3",
-]
 axis_names = ["batch",]
 axis_shapes = [2,]
 partition = []
@@ -39,10 +35,6 @@ seed = 8273
 dtype = "int32"
 
 [loading.sharding]
-devices = [
-    "cuda:1",
-    "cuda:3",
-]
 axis_names = ["batch",]
 axis_shapes = [2,]
 partition = ["batch",]

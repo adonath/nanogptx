@@ -397,7 +397,7 @@ class Config:
         return replace(self.loading, index=index)
 
     @classmethod
-    def read(cls, path: str, cast_enum=True):
+    def read(cls, path: str):
         """Read configuration from file"""
         path = Path(path)
         log.info(f"Reading configuration from {path}")
@@ -409,12 +409,9 @@ class Config:
         with path.open("rb") as f:
             data = tomllib.load(f)
 
-        config = (
-            DaciteConfig(cast=DACITE_ENUMS)
-            if cast_enum
-            else DaciteConfig(check_types=False)
+        return from_dict(
+            data_class=cls, data=data, config=DaciteConfig(cast=DACITE_ENUMS)
         )
-        return from_dict(data_class=cls, data=data, config=config)
 
     @classmethod
     def from_safetensors_meta(cls, data):

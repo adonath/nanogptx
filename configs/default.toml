@@ -3,13 +3,8 @@ seed = 9283
 dtype = "float32"
 
 [sharding]
-devices = [
-    "cuda:0",
-]
 axis_names = []
-axis_shapes = [
-    1,
-]
+axis_shapes = [1,]
 
 [training]
 log_interval = 1
@@ -47,15 +42,8 @@ encoding = "gpt2"
 suffix = "train"
 
 [loading.sharding]
-devices = [
-    "cuda:0",
-]
-axis_names = [
-    "batch",
-]
-axis_shapes = [
-    1,
-]
+axis_names = ["batch",]
+axis_shapes = [1,]
 
 [model]
 block_size = 1024
