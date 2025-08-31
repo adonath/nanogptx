@@ -3,13 +3,11 @@ import logging
 import os
 import time
 from collections import namedtuple
-from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
+from itertools import cycle
 from pathlib import Path
 from typing import Literal
-from itertools import cycle
-from dacite import from_dict, Config as DaciteConfig
 
 import jax
 import numpy as np
@@ -17,6 +15,8 @@ import optax
 import tomli_w
 import tomllib
 import tyro
+from dacite import Config as DaciteConfig
+from dacite import from_dict
 from jax import tree_util
 from safetensors import safe_open
 from tqdm import tqdm
@@ -24,6 +24,7 @@ from tqdm import tqdm
 import wandb
 from model import GPT, GPTConfig
 from utils import (
+    FLOPS_UNIT,
     PATH_BASE,
     PATH_DATA,
     DatasetEnum,
@@ -31,14 +32,13 @@ from utils import (
     InitFromEnum,
     get_checksum,
     get_random_name,
-    FLOPS_UNIT,
 )
 from utils_jax import (
     JaxDevicesEnum,
     JaxDtypesEnum,
-    ShardingConfig,
     JaxFloatDtypesEnum,
     JaxIntDtypesEnum,
+    ShardingConfig,
     flatten_pytree_with_path,
     update_leave_from_mapping,
 )
@@ -245,12 +245,14 @@ class Trainer:
     )
     show_progress: bool = True  # show progress bar
     wandb_log: bool = False
-    total_batch_size: int = 256 # total batch size in units of tokens
+    total_batch_size: int = 256  # total batch size in units of tokens
 
     def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
 
-        log.info(f"Using {self.optimizer.gradient_accumulation_steps} gradient accumulation steps.")
+        log.info(
+            f"Using {self.optimizer.gradient_accumulation_steps} gradient accumulation steps."
+        )
 
         def loss_fn(model, batch, rng_key, is_training):
             """Loss function"""
@@ -267,7 +269,11 @@ class Trainer:
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
                 # the key can be ignored here, because dropout is skipped
-                losses.append(loss_fn(model, batch, rng_key=rng_key, is_training=True).astype(np.float32))
+                losses.append(
+                    loss_fn(model, batch, rng_key=rng_key, is_training=True).astype(
+                        np.float32
+                    )
+                )
 
             return np.mean(losses)
 
@@ -329,9 +335,11 @@ class Trainer:
 
                 rng_key = jax.random.fold_in(rng_key, n_iter)
                 model, opt_state = train_step(model, opt_state, batch, rng_key)
-                
+
                 # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
-                mfu = 3 * flops.per_iter  / FLOPS_UNIT / (time.perf_counter() - time_start)
+                mfu = (
+                    3 * flops.per_iter / FLOPS_UNIT / (time.perf_counter() - time_start)
+                )
                 pbar.update(1)
 
         return model
@@ -380,7 +388,7 @@ class Config:
         return replace(self.loading, index=index)
 
     @classmethod
-    def read(cls, path: str):
+    def read(cls, path: str, cast_enum=True):
         """Read configuration from file"""
         path = Path(path)
         log.info(f"Reading configuration from {path}")
@@ -392,7 +400,20 @@ class Config:
         with path.open("rb") as f:
             data = tomllib.load(f)
 
-        config = DaciteConfig(cast=[InitFromEnum, JaxFloatDtypesEnum, DatasetEnum, JaxDevicesEnum, JaxDtypesEnum, JaxIntDtypesEnum, EncodingEnum])
+        if cast_enum:
+            config = DaciteConfig(
+                cast=[
+                    InitFromEnum,
+                    JaxFloatDtypesEnum,
+                    DatasetEnum,
+                    JaxDevicesEnum,
+                    JaxDtypesEnum,
+                    JaxIntDtypesEnum,
+                    EncodingEnum,
+                ]
+            )
+        else:
+            config = None
 
         return from_dict(data_class=cls, data=data, config=config)
 
@@ -430,7 +451,7 @@ def get_configs():
     for filename in filenames:
         configs[filename.stem] = (
             f"Default configuration from {filename.name}",
-            Config.read(filename),
+            Config.read(filename, cast_enum=False),
         )
 
     return configs
@@ -463,7 +484,7 @@ if __name__ == "__main__":
         model = GPT.read(latest)
     else:
         model = GPT.from_pretrained(config.init_from)
-    
+
     log.info(f"{model.info()}")
 
     spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
