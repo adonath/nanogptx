@@ -19,7 +19,7 @@ beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 warmup_iters = 100 # not super necessary potentially
 
 [loading]
-batch_size = 12
+batch_size = 16
 
 [loading.index]
 dataset = "shakespeare"
@@ -28,6 +28,7 @@ encoding = "char"
 
 [model]
 block_size = 64 # context of up to 256 previous characters
+vocab_size = 66
 n_layer = 4
 n_head = 4
 n_embd = 128

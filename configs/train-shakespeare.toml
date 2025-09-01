@@ -2,12 +2,14 @@
 eval_interval = 2000
 eval_iters = 1
 
-[data]
-batch_size = 8
-dataset = "shakespeare"
-
 [training.optimizer]
 max_iters = 100
+
+[loading]
+batch_size = 8
+
+[loading.index]
+dataset = "shakespeare"
 
 [model]
 block_size = 64

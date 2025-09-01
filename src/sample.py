@@ -144,8 +144,8 @@ def sample(config):
             rng_key=jax.random.fold_in(config.rng_key, idx),
         )
 
-    print(encoding.decode(sample[0].tolist()))
-    print("---------------")
+        print(encoding.decode(sample[0].tolist()))
+        print("---------------")
 
 
 if __name__ == "__main__":

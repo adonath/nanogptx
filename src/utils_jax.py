@@ -1,16 +1,16 @@
 import json
 import logging
 import struct
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
-from dataclasses import dataclass
 from typing import Sequence
 
 import jax
 from jax import numpy as jnp
 from jax import tree_util
-from jax.sharding import NamedSharding, PartitionSpec
 from jax.debug import visualize_sharding
+from jax.sharding import NamedSharding, PartitionSpec
 
 log = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
         if info is None:
             log.debug(f"No value found for `{key}`, setting to `None`")
             return None
-  
+
         return info
 
     return update
@@ -145,6 +145,7 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
 @dataclass(frozen=True)
 class ShardingConfig:
     """Configurable sharding"""
+
     devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
     axis_names: Sequence[str] = ("batch",)
     axis_shapes: Sequence[int] = (len(JaxDevicesEnum),)
@@ -172,4 +173,3 @@ class ShardingConfig:
     def visualize(self, **kwargs):
         """Visualize sharding"""
         visualize_sharding(self.axis_shapes, self.jax, **kwargs)
-    

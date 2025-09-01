@@ -44,7 +44,7 @@ from utils_jax import (
 )
 
 TAB_WIDTH = 4
-DACITE_ENUMS = [
+DACITE_CAST = [
     InitFromEnum,
     JaxFloatDtypesEnum,
     DatasetEnum,
@@ -52,7 +52,12 @@ DACITE_ENUMS = [
     JaxDtypesEnum,
     JaxIntDtypesEnum,
     EncodingEnum,
+    int,
+    str,
+    float,
+    bool,
 ]
+DACITE_CONFIG = DaciteConfig(cast=DACITE_CAST, strict=True)
 
 log = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -278,11 +283,8 @@ class Trainer:
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
                 # the key can be ignored here, because dropout is skipped
-                losses.append(
-                    loss_fn(model, batch, rng_key=rng_key, is_training=True).astype(
-                        np.float32
-                    )
-                )
+                value = loss_fn(model, batch, rng_key=rng_key, is_training=True)
+                losses.append(value.astype(np.float32))
 
             return np.mean(losses)
 
@@ -376,7 +378,7 @@ class Config:
         # calculate the gradient accumulation based on total batch size
         tokens_per_iter = self.model.block_size * self.loading.batch_size
         accum_steps = self.training.total_batch_size // tokens_per_iter
-        self.training.optimizer.gradient_accumulation_steps = accum_steps
+        self.training.optimizer.gradient_accumulation_steps = max(accum_steps, 1)
 
     @property
     def rng_key(self) -> jax.Array:
@@ -409,16 +411,16 @@ class Config:
         with path.open("rb") as f:
             data = tomllib.load(f)
 
-        return from_dict(
-            data_class=cls, data=data, config=DaciteConfig(cast=DACITE_ENUMS)
-        )
+        return from_dict(data_class=cls, data=data, config=DACITE_CONFIG)
 
     @classmethod
     def from_safetensors_meta(cls, data):
         """Re-create config from safetensors meta"""
-        return jax.tree.map_with_path(
-            update_leave_from_mapping(data, use_default_if_missing=True), cls()
-        )
+        # This requires some gymnatsics here...
+        update = update_leave_from_mapping(data, use_default_if_missing=True)
+        data = jax.tree.map_with_path(update, asdict(cls()))
+
+        return from_dict(data_class=cls, data=data, config=DACITE_CONFIG)
 
     def to_safetensors_meta(self):
         """Create safetensors meta"""
