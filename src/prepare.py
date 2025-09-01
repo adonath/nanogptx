@@ -144,7 +144,7 @@ def write_safetensors(tokens, filename, encoding, filename_input):
         "n-tokens": str(len(tokens)),
         "encoding": encoding.name,
         "checksum": get_checksum(tokens),
-        "filename-input": filename_input,
+        "filename-input": str(filename_input),
     }
 
     data = {
@@ -157,7 +157,7 @@ def write_safetensors(tokens, filename, encoding, filename_input):
 
 def generate_summary(filenames, suffix):
     """Generate summary for a give set of shards"""
-    names = []
+    names, names_input = [], []
 
     with safe_open(filenames[0], framework="numpy") as f:
         encoding = f.metadata()["encoding"]
@@ -169,12 +169,14 @@ def generate_summary(filenames, suffix):
             names.append({"name": filename.name, "checksum": f.metadata()["checksum"]})
             n_tokens += int(f.metadata()["n-tokens"])
             stats += f.get_tensor("stats")
+            names_input.append(f.metadata()["filename-input"])
 
     return {
         "encoding": encoding,
         f"n-tokens-{suffix}": n_tokens,
         f"shards-{suffix}": names,
         f"token-stats-{suffix}": stats.tolist(),
+        f"input-filenames-{suffix}": names_input,
     }
 
 
@@ -310,6 +312,7 @@ def prepare(config):
                     tokens_shard[:n_tokens_total],
                     filename=filename,
                     encoding=encoding,
+                    filename_input=filename_input.name,
                 )
 
 
