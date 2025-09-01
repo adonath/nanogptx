@@ -89,6 +89,7 @@ def get_jax_devices():
 
 
 JAX_DEVICES = get_jax_devices()
+
 JaxDevicesEnum = StrEnum("JaxDevicesEnum", list(JAX_DEVICES))
 JaxDevicesEnum.jax = property(lambda self: JAX_DEVICES[self.name])
 
@@ -146,9 +147,9 @@ def update_leave_from_mapping(mapping, use_default_if_missing=False):
 class ShardingConfig:
     """Configurable sharding"""
 
-    devices: Sequence[JaxDevicesEnum] = tuple(JaxDevicesEnum)
+    devices: Sequence[JaxDevicesEnum] = (tuple(JaxDevicesEnum)[0],)
     axis_names: Sequence[str] = ("batch",)
-    axis_shapes: Sequence[int] = (len(JaxDevicesEnum),)
+    axis_shapes: Sequence[int] = (1,)
     partition: Sequence[str] = ("batch",)
 
     @property

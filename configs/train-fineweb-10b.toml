@@ -4,7 +4,6 @@ dtype = "bfloat16"
 
 [sharding]
 axis_names = ["batch",]
-axis_shapes = [2,]
 partition = []
 
 [training]
@@ -36,7 +35,6 @@ dtype = "int32"
 
 [loading.sharding]
 axis_names = ["batch",]
-axis_shapes = [2,]
 partition = ["batch",]
 
 [loading.index]

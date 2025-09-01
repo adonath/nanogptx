@@ -34,8 +34,6 @@ zstandard = "*"
 [feature.train.dependencies]
 wandb = ">=0.21.0,<0.22"
 
-[feature.train.pypi-dependencies]
-optax = ">=0.2.5,<0.3"
 
 [feature.train.activation.env]
 JAX_TRACEBACK_FILTERING="off"
@@ -43,6 +41,7 @@ JAX_COMPILATION_CACHE_DIR=".jax_cache"
 WANDB_API_KEY = "$WANDB_API_KEY"
 
 [feature.cpu.dependencies]
+optax = ">=0.2.5,<0.3"
 jax = ">=0.5.0,<0.7"
 
 [feature.cpu.activation.env]
@@ -55,10 +54,12 @@ cuda = "12"
 JAX_DEFAULT_MATMUL_PRECISION="bfloat16"
 
 [feature.gpu.target.linux-64.pypi-dependencies]
+optax = ">=0.2.5,<0.3"
 jax = { version = ">=0.5.0, <0.8", extras = ["cuda12"] }
 
 [feature.gpu-mps.target.osx-arm64.pypi-dependencies]
-jax = ">=0.5.0"
+optax = ">=0.1.8,<0.3"
+jax = "==0.5.0"
 jax-metal = ">=0.0.7"
 
 [feature.gpu-mps.activation.env]
@@ -74,4 +75,4 @@ prepare = ["io"]
 cpu = ["cpu", "train"]
 gpu = ["gpu", "train"]
 gpu-mps = ["gpu-mps",  "train"]
-notebook = ["notebook", "cpu"]
+notebook = ["notebook", "cpu", "io", "train"]

@@ -37,7 +37,6 @@ DEFAULT_RNG_KEY = jax.random.key(98238)
 DEFAULT_DEVICE = tuple(JaxDevicesEnum)[0]
 
 
-
 class Axis(int, Enum):
     """Axis order"""
 
@@ -185,7 +184,9 @@ class ArrayInfo:
             key=rng_key,
             shape=self.shape,
             dtype=self.dtype.jax if dtype is None else dtype,
-            out_sharding=self.out_sharding.jax if out_sharding is None else out_sharding,
+            out_sharding=self.out_sharding.jax
+            if out_sharding is None
+            else out_sharding,
         )
         return self.post_init(result)
 
@@ -257,7 +258,7 @@ class Embedding:
         return cls(weight=weight)
 
     def __call__(self, x):
-        return jnp.take(self.weight, x, axis=0)
+        return jnp.take(self.weight, x, axis=EmbeddingAxis.vocab)
 
 
 @tree_util.register_dataclass
@@ -595,7 +596,9 @@ class GPT:
         x = jax.ShapeDtypeStruct((1, self.config.block_size), dtype=dtype)
         flops_per_fwdbwd = get_flops(x)
 
-        x = jax.ShapeDtypeStruct((batch_size, self.config.block_size), dtype=dtype, sharding=sharding)
+        x = jax.ShapeDtypeStruct(
+            (batch_size, self.config.block_size), dtype=dtype, sharding=sharding
+        )
         flops_per_iter = get_flops(x)
 
         return Flops(
@@ -656,7 +659,9 @@ class GPT:
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=None, device=None):
         """Init arrays of the model"""
         # TODO: do an abstract evaluation of the shape, dtypes and shardings here?
-        init_arrays = init_array_leaves(rng_key=rng_key, dtype=dtype, out_sharding=device)
+        init_arrays = init_array_leaves(
+            rng_key=rng_key, dtype=dtype, out_sharding=device
+        )
         return jax.tree.map(
             init_arrays, self, is_leaf=lambda _: isinstance(_, ArrayInfo)
         )
