@@ -27,7 +27,7 @@ To train a small transformer model with character level encoding on the "tiny Sh
 pixi run download --dataset shakespeare
 pixi run prepare --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1
 pixi run train --environment cpu train-shakespeare-char
-pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
+pixi run sample --init-from resume --sample.rmax-new-tokens 500 --sampler.num-samples 5
 ```
 The workflow always consists of those four steps. The training should finish in <2 minutes on a M1 type machine.
 
@@ -50,20 +50,20 @@ Here are some of the features of this implementation:
 - **CLI:** after careful consideration I have decied to support a CLI via [tyro](https://brentyi.github.io/tyro/). The code overhead is minimal, as all the configuration is in dataclasses anyway. And tyro offers a nice default interface as well as nested commands.
 - **Abstract evaluation and lazy initialization:** I think it is useful to not fully instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
 - **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
-- **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU.
+- **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU. I have also tried to support MPS, via `jax-metal`, but ran into multiple issus with missing support for operations.
 - **Sharding strategies**: Currently on SPMD is supported, other strategies might follow.
 - **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and custom document cleaning / pre-processing.
 - **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
 
 ## How to work with this Repository
-This repository can bes used as template for your own small to mid-scale projects.
+This repository can be used as template for your own small to mid-scale research and educational projects.
 
 ### Adding a new Dataset
-I you would like to add a new dataset follow these steps:
+If you would like to add a new dataset follow these steps:
 
-- Add a new entry to the `DatasetEnum` with a short identifier of your dataset
-- Add the download urls in `download.py`, decompressing / unzip / untar should also happen at this step
-- Add a custom read function in `prepare.py` as needed.
+- Add a new entry to the `DatasetEnum` in `src/utils.py` with a short identifier of your dataset
+- Add the download urls in `src/download.py`, decompressing / unzip / untar should also happen at this step
+- Add a custom read function in `src/prepare.py` as needed.
 
 ### Adding a new Model
 TODO:
