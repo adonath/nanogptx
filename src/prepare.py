@@ -136,7 +136,7 @@ def read_parquet(filename) -> list[str]:
     return list(data["text"])
 
 
-def write_safetensors(tokens, filename, encoding):
+def write_safetensors(tokens, filename, encoding, filename_input):
     """Write safetensors file"""
     log.info(f"Writing {filename}")
 
@@ -144,6 +144,7 @@ def write_safetensors(tokens, filename, encoding):
         "n-tokens": str(len(tokens)),
         "encoding": encoding.name,
         "checksum": get_checksum(tokens),
+        "filename-input": filename_input,
     }
 
     data = {
@@ -272,8 +273,9 @@ def prepare(config):
         n_shard, n_tokens_total = 0, 0
         tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
 
-        for result in pool.imap(
-            partial(apply, steps), filenames, chunksize=config.chunksize
+        for result, filename_input in zip(
+            pool.imap(partial(apply, steps), filenames, chunksize=config.chunksize),
+            filenames,
         ):
             # each process returns a list of token sequences, where each toke sequence typically represents
             # a document
@@ -291,7 +293,12 @@ def prepare(config):
                 pbar.update(remainder)
 
                 filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(tokens_shard, filename=filename, encoding=encoding)
+                write_safetensors(
+                    tokens_shard,
+                    filename=filename,
+                    encoding=encoding,
+                    filename_input=filename_input.name,
+                )
 
                 n_shard += 1
                 n_tokens_total = len(tokens) - remainder
