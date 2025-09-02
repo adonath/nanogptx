@@ -474,6 +474,8 @@ if __name__ == "__main__":
         f"Validation dataset has {data_loader_validate.index.n_tokens_total} tokens."
     )
 
+    log.info(f"Using devices {config.sharding.jax.device_set}")
+
     if config.init_from == InitFromEnum.scratch:
         model = GPT.from_config(config.model)
     elif config.init_from == InitFromEnum.resume:
