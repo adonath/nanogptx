@@ -18,9 +18,9 @@ The purpose of this repository is mostly documenting my own learning progress on
 
 ## Getting started
 This repositiry comes with mutiple pre-defined environments in a `pixi.toml` file. This makes it very covenient to run the model in CPU, GPU and even TPU (soon...) environments.
-To get started, you first [install pixi](https://pixi.sh/latest/installation/), then proceed with:
+To get started, you first [install pixi](https://pixi.sh/latest/installation/), then proceed with one of the options:
 
-### Training a Small Model on "Tiny Shakespeare" and CPU
+### (a) Training a Small Model on "Tiny Shakespeare" and CPU
 To train a small transformer model with character level encoding on the "tiny Shakespeare" dataset you can use:
 
 ```bash
@@ -32,7 +32,7 @@ pixi run sample --init-from resume --sample.rmax-new-tokens 500 --sampler.num-sa
 The workflow always consists of those four steps. The training should finish in <2 minutes on a M1 type machine.
 
 
-### Training a GPT2 124m Model on Fineweb10b and GPU
+### (b) Training a GPT2 124m Model on Fineweb10b and GPU
 To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for example:
 ```bash
 pixi run download --dataset fineweb_10b
@@ -41,6 +41,7 @@ pixi run train  --environment gpu train-fineweb-10b --sharding.devices cuda:0,cu
 pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
 ```
 `nanogptx` supports a simple SPMD (single program multiple data) distribution strategy, meaning groups of batches are evaluated in parallel on the configured devices.
+
 
 ## NanoGPTX Features
 
@@ -51,7 +52,7 @@ Here are some of the features of this implementation:
 - **Abstract evaluation and lazy initialization:** I think it is useful to not fully instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
 - **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
 - **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU. I have also tried to support MPS, via `jax-metal`, but ran into multiple issus with missing support for operations.
-- **Sharding strategies**: Currently on SPMD is supported, other strategies might follow.
+- **Sharding strategies**: Currently only SPMD is supported, other strategies might follow...
 - **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and custom document cleaning / pre-processing.
 - **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
 
@@ -74,4 +75,4 @@ TODO:
 
 ## Acknowledgements
 
-Thanks to @fcrespo82 for the names list from the [Ubuntu Name generator](https://ubuntu-name-generator.crespo.com.br).
+Thanks to [@fcrespo82](https://github.com/fcrespo82) for the names list from the [Ubuntu Name generator](https://ubuntu-name-generator.crespo.com.br).
