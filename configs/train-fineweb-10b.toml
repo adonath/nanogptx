@@ -77,4 +77,3 @@ init_std = 0.02
 [logging]
 wandb_log = false
 wandb_project = "nanogptx"
-wandb_run_name = "xeric-xebu"
