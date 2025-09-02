@@ -6,8 +6,14 @@ dtype = "bfloat16"
 devices = [
     "cuda:0",
     "cuda:1",
+    "cuda:2",
+    "cuda:3",
+    "cuda:4",
+    "cuda:5",
+    "cuda:6",
+    "cuda:7",
 ]
-axis_shapes = [2,]
+axis_shapes = [8,]
 axis_names = ["batch",]
 partition = []
 
@@ -33,7 +39,7 @@ lr_decay_iters = 20000
 min_lr = 6e-05
 
 [loading]
-batch_size = 32
+batch_size = 512 # (n_devices * 64)
 verify = true
 seed = 8273
 dtype = "int32"
@@ -42,8 +48,14 @@ dtype = "int32"
 devices = [
     "cuda:0",
     "cuda:1",
+    "cuda:2",
+    "cuda:3",
+    "cuda:4",
+    "cuda:5",
+    "cuda:6",
+    "cuda:7",
 ]
-axis_shapes = [2,]
+axis_shapes = [8,]
 axis_names = ["batch",]
 partition = ["batch",]
 
