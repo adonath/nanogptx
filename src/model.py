@@ -7,13 +7,15 @@ import logging
 import math
 from collections import namedtuple
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from functools import partial
 from pathlib import Path
 from typing import ClassVar, Literal, Optional
 
 import jax
+from dacite import Config as DaciteConfig
+from dacite import from_dict
 from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
@@ -82,21 +84,16 @@ class GPTConfig:
         return self.init_std / math.sqrt(2 * self.n_layer)
 
     @classmethod
-    def dummy(cls, n_layer: int = 12, n_head: int = 12, use_bias: bool = True):
-        """Dummy configuration to create a model with minimal parameters but with equivalent PyTree structure"""
-        return cls(
-            block_size=0,
-            vocab_size=0,
-            n_layer=n_layer,
-            n_head=n_head,
-            n_embd=0,
-            use_bias=use_bias,
+    def from_safetensors_meta(cls, data):
+        """Create from safetensors meta"""
+        data = {_.name: data[f"model.{_.name}"] for _ in fields(cls)}
+        return from_dict(
+            data_class=cls, data=data, config=DaciteConfig(cast=[int, float, bool])
         )
 
     @classmethod
     def read_json(cls, path):
-        """Read hugginface JSON config file"""
-
+        """Read huggingface JSON config file fopr GPT2"""
         with Path(path).open("r") as f:
             data = json.load(f)
 
@@ -108,7 +105,7 @@ class GPTConfig:
             n_embd=data["n_embd"],
             n_head=data["n_head"],
             init_std=data["initializer_range"],
-            use_bias=False,
+            use_bias=True,
         )
 
 
@@ -684,11 +681,7 @@ class GPT:
     @classmethod
     def read(cls, path, transpose_weights=True) -> GPT:
         """Read model from safetensors file"""
-        # create a dummy model to get the equivalent PyTree structure, this is
-        # not nice, but JAX would need to allow generating a PyTree structure from a static definition.
         log.info(f"Reading model from {path}")
-
-        array_infos = {}
 
         header = read_safetensors_header(path)
         metadata = header.pop("__metadata__")
@@ -699,6 +692,8 @@ class GPT:
             "mlp.c_fc.weight",
             "mlp.c_proj.weight",
         ]
+
+        array_infos = {}
 
         for name, meta in header.items():
             array_infos[name] = ArrayInfo.from_safetensors(
@@ -713,13 +708,14 @@ class GPT:
         # tied parameters are missing, just create a reference as placeholder
         array_infos["lm_head.weight"] = array_infos["wte.weight"]
 
-        config = GPTConfig.dummy(
-            n_layer=int(metadata.get("model.n_layer", GPTConfig.n_layer)),
-            n_head=int(metadata.get("model.n_head", GPTConfig.n_head)),
-            use_bias=bool(metadata.get("model.use_bias", GPTConfig.use_bias)),
-        )
+        filename_json = path.parent / "config.json"
 
-        model = GPT.from_config(config)
+        if filename_json.exists():
+            config = GPTConfig.read_json(filename_json)
+        else:
+            config = GPTConfig.from_safetensors_meta(metadata)
+
+        model = cls.from_config(config)
 
         return tree_util.tree_map_with_path(
             update_leave_from_mapping(array_infos, use_default_if_missing=False), model

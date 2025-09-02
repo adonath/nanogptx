@@ -43,11 +43,13 @@ class TokenSampler:
         width, width[Axis.sequence] = [(0, 0)] * tokens.ndim, (0, self.max_new_tokens)
         tokens = jnp.pad(tokens, pad_width=width)
 
+        block_size = min(model.config.block_size, self.max_new_tokens)
+
         def sample(context, idx):
             context_window = jax.lax.dynamic_slice_in_dim(
                 context,
-                idx - model.config.block_size,
-                model.config.block_size,
+                idx - block_size,
+                block_size,
                 axis=Axis.sequence,
             )
             logits = model(context_window, rng_key=rng_key, is_training=False)
