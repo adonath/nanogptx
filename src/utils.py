@@ -29,6 +29,7 @@ class DatasetEnum(StrEnum):
     fineweb_edu_100b = "fineweb-edu-100b"
     tinystories = "tinystories"
     pile_uncopyrighted = "pile-uncopyrighted"
+    hellaswag = "hellaswag"
 
 
 class PretrainedModels(StrEnum):

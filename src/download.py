@@ -47,6 +47,11 @@ DATA_URLS = {
     DatasetEnum.fineweb_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb/resolve/main/sample/100BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in product(range(15), range(10))],
     DatasetEnum.fineweb_edu_10b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT/{idx:03d}_00000.parquet" for idx in range(14)],
     DatasetEnum.fineweb_edu_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in  product(range(14), range(10))],
+    DatasetEnum.hellaswag: [
+        "https://huggingface.co/datasets/Rowan/hellaswag/resolve/main/data/test-00000-of-00001.parquet",
+        "https://huggingface.co/datasets/Rowan/hellaswag/resolve/main/data/train-00000-of-00001.parquet",
+        "https://huggingface.co/datasets/Rowan/hellaswag/resolve/main/data/validation-00000-of-00001.parquet",
+    ]
 }
 # fmt: on
 
