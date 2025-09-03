@@ -7,7 +7,7 @@ import logging
 import math
 from collections import namedtuple
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 from functools import partial
 from pathlib import Path
@@ -664,7 +664,7 @@ class GPT:
         )
 
     @classmethod
-    def from_pretrained(cls, model_type) -> GPT:
+    def from_pretrained(cls, model_type, **kwargs) -> GPT:
         """From pretrained model"""
         model_type = PretrainedModels(model_type)
         path = PATH_DATA / f"models/{model_type.value}"
@@ -676,10 +676,10 @@ class GPT:
                 f"Model {model_type.value} not available. Download weights using 'download.py' first."
             )
 
-        return cls.read(filename_model)
+        return cls.read(filename_model, **kwargs)
 
     @classmethod
-    def read(cls, path, transpose_weights=True) -> GPT:
+    def read(cls, path, transpose_weights=True, **kwargs) -> GPT:
         """Read model from safetensors file"""
         log.info(f"Reading model from {path}")
 
@@ -715,7 +715,7 @@ class GPT:
         else:
             config = GPTConfig.from_safetensors_meta(metadata)
 
-        model = cls.from_config(config)
+        model = cls.from_config(replace(config, **kwargs))
 
         return tree_util.tree_map_with_path(
             update_leave_from_mapping(array_infos, use_default_if_missing=False), model
