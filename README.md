@@ -47,14 +47,14 @@ pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
 
 Here are some of the features of this implementation:
 
-- **Hierarchical configuration:** I do like hierarchical configuration as long as it is not too deep (3-4 levels max). The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. The configuration requires setting defaults and on I/O it does type coercion to the default type, to catch errors early.
-- **CLI:** after careful consideration I have decied to support a CLI via [tyro](https://brentyi.github.io/tyro/). The code overhead is minimal, as all the configuration is in dataclasses anyway. And tyro offers a nice default interface as well as nested commands.
-- **Abstract evaluation and lazy initialization:** I think it is useful to not fully instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
-- **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
-- **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU. I have also tried to support MPS, via `jax-metal`, but ran into multiple issus with missing support for operations.
-- **Sharding strategies**: Currently only SPMD is supported, other strategies might follow...
-- **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and custom document cleaning / pre-processing.
-- **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
+- 🗄️ **Hierarchical configuration:** I do like hierarchical configuration as long as it is not too deep (3-4 levels max). The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. The configuration requires setting defaults and on I/O it does type coercion to the default type, to catch errors early.
+- 💻 **CLI:** after careful consideration I have decied to support a CLI via [tyro](https://brentyi.github.io/tyro/). The code overhead is minimal, as all the configuration is in dataclasses anyway. And tyro offers a nice default interface as well as nested commands.
+- ✨ **Abstract evaluation and lazy initialization:** I think it is useful to not fully instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
+- 🗃️ **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
+- 🐍 **Support for Pixi enviromments:** this repository includes a `pixi.toml` with pre-defined environments for many scenarios such as CPU, CPU and even TPU. I have also tried to support MPS, via `jax-metal`, but ran into multiple issus with missing support for operations.
+- 💯 **Sharding strategies**: Currently only SPMD is supported, other strategies might follow...
+- 📚 **Data preprocessing pipeline:** A minimal function based pre-processing pipeline for tokenization and custom document cleaning / pre-processing.
+- 📇 **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
 
 ## How to work with this Repository
 This repository can be used as template for your own small to mid-scale research and educational projects.
