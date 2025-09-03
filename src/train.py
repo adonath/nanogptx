@@ -17,6 +17,7 @@ import tomllib
 import tyro
 from dacite import Config as DaciteConfig
 from dacite import from_dict
+from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
 from tqdm import tqdm
@@ -225,7 +226,7 @@ class DatasetLoader:
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 # TODO: load straight to device for zero copy, see also https://github.com/huggingface/safetensors/issues/636
                 log.info(f"Reading {filename}")
-                data = f.get_tensor("tokens")
+                data = jax.device_put(f.get_tensor("tokens"), self.sharding.jax)
 
                 if self.verify and checksum != get_checksum(data):
                     raise ValueError(f"Checksum does not agree for {filename}")
@@ -235,11 +236,11 @@ class DatasetLoader:
                 max_val = len(data) - block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
-                x = np.stack([data[i : i + block_size] for i in idx_batches])
-                y = np.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
+                x = jnp.stack([data[i : i + block_size] for i in idx_batches])
+                y = jnp.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
                 yield Batch(
-                    x=jax.device_put(x, self.sharding.jax),
-                    y=jax.device_put(y, self.sharding.jax),
+                    x=x,
+                    y=y,
                     idx_shard=idx_shard,
                     idx_batches=idx_batches,
                 )
@@ -447,10 +448,13 @@ def get_configs():
 
     # TODO: parse desription from the first line of the toml file
     for filename in filenames:
-        configs[filename.stem] = (
-            f"Default configuration from {filename.name}",
-            Config.read(filename),
-        )
+        try:
+            configs[filename.stem] = (
+                f"Default configuration from {filename.name}",
+                Config.read(filename),
+            )
+        except ValueError as e:
+            log.warning(f"Error in file {filename.name}, {e}")
 
     return configs
 
