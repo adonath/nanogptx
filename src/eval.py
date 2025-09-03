@@ -13,7 +13,9 @@ log = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
 
 
-EvaluationExample = namedtuple("EvaluationExample", ["ctx", "endings", "tokens", "mask", "label"])
+EvaluationExample = namedtuple(
+    "EvaluationExample", ["ctx", "endings", "tokens", "mask", "label"]
+)
 
 
 def tokenize_example(example):
@@ -24,24 +26,26 @@ def tokenize_example(example):
     tok_rows, mask_rows = [], []
 
     for end in example["endings"]:
-        end_tokens = enc.encode(" " + end) # note: prepending " " because GPT-2 tokenizer
+        end_tokens = enc.encode(
+            " " + end
+        )  # note: prepending " " because GPT-2 tokenizer
         tok_rows.append(ctx_tokens + end_tokens)
-        mask_rows.append([0]*len(ctx_tokens) + [1]*len(end_tokens))
+        mask_rows.append([0] * len(ctx_tokens) + [1] * len(end_tokens))
 
     max_len = max(len(row) for row in tok_rows)
     tokens = jnp.zeros((4, max_len), dtype=jnp.int64)
     mask = jnp.zeros((4, max_len), dtype=jnp.int64)
 
     for i, (tok_row, mask_row) in enumerate(zip(tok_rows, mask_rows)):
-        tokens[i, :len(tok_row)] = jnp.asarray(tok_row)
-        mask[i, :len(mask_row)] = jnp.asarray(mask_row)
+        tokens[i, : len(tok_row)] = jnp.asarray(tok_row)
+        mask[i, : len(mask_row)] = jnp.asarray(mask_row)
 
     return EvaluationExample(
         tokens=tokens,
         mask=mask,
         label=example["label"],
         ctx=example["ctx"],
-        endings=example["endings"]
+        endings=example["endings"],
     )
 
 
@@ -50,15 +54,15 @@ class ModelEvaluator:
     """Model evaluator"""
 
     def evaluate(self, model, data_loader):
-
         # model = torch.compile(model
         datas = []
         num_correct_norm = 0
         num_correct = 0
         num_total = 0
         for example in data_loader:
-            logits = model(example.tokens, rng_key=jax.random.key(9232), is_training=True)
-
+            logits = model(
+                example.tokens, rng_key=jax.random.key(9232), is_training=True
+            )
             shift_losses = softmax_cross_entropy_with_integer_labels(
                 logits=logits[..., :-1, :], labels=example.tokens[..., 1:]
             )
@@ -68,7 +72,9 @@ class ModelEvaluator:
             num_total += 1
             num_correct += int(pred == label)
             num_correct_norm += int(pred_norm == label)
-            print(f"{num_total} acc: {num_correct/num_total:.4f} acc_norm: {num_correct_norm}/{num_total}={num_correct_norm/num_total:.4f}")
+            print(
+                f"{num_total} acc: {num_correct/num_total:.4f} acc_norm: {num_correct_norm}/{num_total}={num_correct_norm/num_total:.4f}"
+            )
 
             # debug: pretty print a few examples, and the losses in each case
             if num_total < 10:
@@ -83,5 +89,4 @@ class ModelEvaluator:
         filename = os.path.join(DATA_CACHE_DIR, f"hellaswag_val.bin")
         write_evalfile(filename, datas)
 
-
-        return 
+        return
