@@ -162,6 +162,11 @@ class ShardingConfig:
         )
 
     @property
+    def n_devices(self):
+        """Number of devices in the sharding"""
+        return len(self.jax.device_set)
+
+    @property
     def devices_jax(self):
         """Return actual device"""
         return [_.jax for _ in self.devices]
@@ -170,6 +175,11 @@ class ShardingConfig:
     def jax(self):
         """Return named sharding"""
         return NamedSharding(self.mesh_jax, PartitionSpec(*self.partition))
+
+    @property
+    def jax_replicated(self):
+        """Return named sharding replicated"""
+        return NamedSharding(self.mesh_jax, PartitionSpec())
 
     def visualize(self, **kwargs):
         """Visualize sharding"""
