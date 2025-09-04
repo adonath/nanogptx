@@ -71,6 +71,9 @@ ENABLE_PJRT_COMPATIBILITY="1"
 [feature.notebook.dependencies]
 notebook = ">=7.1.4,<8"
 
+[feature.profile.dependencies]
+tensorflow = "*"
+
 [environments]
 prepare = ["io"]
 cpu = ["cpu", "train"]

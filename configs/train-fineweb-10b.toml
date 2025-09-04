@@ -28,14 +28,14 @@ total_batch_size = 524288
 
 [training.optimizer]
 learning_rate = 0.0006
-max_iters = 20000
+max_iters = 18865
 weight_decay = 0.0
 beta1 = 0.9
 beta2 = 0.95
 grad_clip = 1.0
 decay_lr = true
 warmup_iters = 700
-lr_decay_iters = 20000
+lr_decay_iters = 18865
 min_lr = 6e-05
 
 [loading]
