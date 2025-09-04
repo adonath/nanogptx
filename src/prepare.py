@@ -184,7 +184,7 @@ def write_summary(path, shards_val_idxs):
     """Write summary stats file"""
     shards_train, shards_val = [], []
 
-    for filename in Path(path).glob("*.safetensors"):
+    for filename in sorted(Path(path).glob("*.safetensors")):
         idx = int(filename.stem.split("_")[-1])
         (shards_train, shards_val)[idx in shards_val_idxs].append(filename)
 
