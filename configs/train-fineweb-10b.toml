@@ -43,6 +43,7 @@ batch_size = 512 # (n_devices * 64)
 verify = true
 seed = 8273
 dtype = "int32"
+randomize_shards = false
 
 [loading.sharding]
 devices = [
