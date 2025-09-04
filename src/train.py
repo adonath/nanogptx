@@ -226,7 +226,11 @@ class DatasetLoader:
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 # TODO: load straight to device for zero copy, see also https://github.com/huggingface/safetensors/issues/636
                 log.info(f"Reading {filename}")
-                data = jax.device_put(f.get_tensor("tokens"), self.sharding.jax)
+                # We first replicate the data to avoid copying the small batches later.
+                # The data is small enough...
+                data = jax.device_put(
+                    f.get_tensor("tokens"), self.sharding.jax_replicated
+                )
 
                 if self.verify and checksum != get_checksum(data):
                     raise ValueError(f"Checksum does not agree for {filename}")
@@ -239,8 +243,8 @@ class DatasetLoader:
                 x = jnp.stack([data[i : i + block_size] for i in idx_batches])
                 y = jnp.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
                 yield Batch(
-                    x=x,
-                    y=y,
+                    x=jax.device_put(x, self.sharding.jax),
+                    y=jax.device_put(y, self.sharding.jax),
                     idx_shard=idx_shard,
                     idx_batches=idx_batches,
                 )
