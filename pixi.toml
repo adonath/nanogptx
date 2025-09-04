@@ -38,6 +38,7 @@ wandb = ">=0.21.0,<0.22"
 [feature.train.activation.env]
 JAX_TRACEBACK_FILTERING="off"
 JAX_COMPILATION_CACHE_DIR=".jax_cache"
+XLA_PYTHON_CLIENT_MEM_FRACTION="0.75"
 WANDB_API_KEY = "$WANDB_API_KEY"
 
 [feature.cpu.dependencies]
