@@ -15,8 +15,8 @@ sample = {cmd=["python", "src/sample.py"]}
 [dependencies]
 python = ">=3.12.11,<3.14"
 tqdm = ">=4.67.1,<5"
-tyro = ">=0.9.28,<0.10"
-tiktoken = ">=0.9.0,<0.10"
+tyro = ">=0.9.31,<0.10"
+tiktoken = ">=0.11.0,<0.12"
 safetensors = ">=0.6.2,<0.7"
 numpy = ">=2.3.2,<3"
 requests = ">=2.32.5,<3"
@@ -40,6 +40,7 @@ JAX_TRACEBACK_FILTERING="off"
 JAX_COMPILATION_CACHE_DIR=".jax_cache"
 XLA_PYTHON_CLIENT_MEM_FRACTION="0.75"
 WANDB_API_KEY = "$WANDB_API_KEY"
+
 
 [feature.cpu.dependencies]
 optax = ">=0.2.5,<0.3"
@@ -72,11 +73,19 @@ ENABLE_PJRT_COMPATIBILITY="1"
 notebook = ">=7.1.4,<8"
 
 [feature.profile.dependencies]
-tensorflow = "*"
+tensorflow = "==2.18.0"
+tensorboard = ">=2.18.0,<3"
+
+[feature.profile.pypi-dependencies]
+xprof = "*"
+importlib-resources = ">=6.5.2, <7"
+
 
 [environments]
 prepare = ["io"]
 cpu = ["cpu", "train"]
+cpu-profile = ["cpu", "train", "profile"]
 gpu = ["gpu", "train"]
+gpu-profile = ["gpu", "train", "profile"]
 gpu-mps = ["gpu-mps",  "train"]
 notebook = ["notebook", "cpu", "io", "train"]

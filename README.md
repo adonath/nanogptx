@@ -39,7 +39,7 @@ The workflow always consists of those four steps. The training should finish in 
 All the sub-commands have a `--help` option which shows you the available configuration options.
 
 
-### (b) Training a GPT2 124m Model on Fineweb10b and mutiple GPUs
+### (b) Training a GPT2 124m Model on Fineweb10b and multiple GPUs
 To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for example:
 ```bash
 pixi run download --dataset fineweb_10b
@@ -67,6 +67,16 @@ Here are some of the features of the `nanogptx` implementation:
 This repository can be used as template for your own small to mid-scale research and educational projects. You can explore different training strategies,
 modified architectures etc. As everything is in pure JAX, you can modify any small component in the model, without the need of implementing whole new layers.
 `nanogptx` still provides the whole scalable infrastructure.
+
+### Profiling
+There is a dedicated option and environment for profiling available. The approch follows the [programmatic capture section in the JAX docs](https://docs.jax.dev/en/latest/profiling.html#programmatic-capture).
+An you can enable it using:
+
+```bash
+pixi run --environment cpu-profile train train-shakespeare-char --profile
+pixi run --environment gpu-profile train train-fineweb-10b --sharding.devices cuda:0,cuda:1 --loading.sharding.devices cuda:0,cuda:1 --profile
+```
+
 
 ### Adding a new Dataset
 If you would like to add a new dataset follow these steps:

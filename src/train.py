@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from collections import namedtuple
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
 from itertools import cycle
@@ -381,6 +382,7 @@ class Config:
     loading: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
+    profile: bool = False
     _key = None
 
     def __post_init__(self):
@@ -505,12 +507,20 @@ if __name__ == "__main__":
 
     log.info(f"{model.info()}")
 
-    model = config.training.train(
-        model=model,
-        data_loader_train=data_loader_train,
-        data_loader_validate=data_loader_validate,
-        rng_key=config.rng_key,
-    )
+    if config.profile:
+        path = f".profile/{config.logging.wandb_run_name}"
+        log.info(f"Profiling to {path}")
+        context = jax.profiler.trace(path)
+    else:
+        context = nullcontext()
+
+    with context:
+        model = config.training.train(
+            model=model,
+            data_loader_train=data_loader_train,
+            data_loader_validate=data_loader_validate,
+            rng_key=config.rng_key,
+        )
 
     filename = (
         PATH_DATA
