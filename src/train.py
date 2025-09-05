@@ -33,6 +33,7 @@ from utils import (
     InitFromEnum,
     get_checksum,
     get_random_name,
+    sizeof_fmt,
 )
 from utils_jax import (
     JaxDevicesEnum,
@@ -226,11 +227,7 @@ class DatasetLoader:
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 # TODO: load straight to device for zero copy, see also https://github.com/huggingface/safetensors/issues/636
                 log.info(f"Reading {filename}")
-                # We first replicate the data to avoid copying the small batches later.
-                # The data is small enough...
-                data = jax.device_put(
-                    f.get_tensor("tokens"), self.sharding.jax_replicated
-                )
+                data = f.get_tensor("tokens")
 
                 if self.verify and checksum != get_checksum(data):
                     raise ValueError(f"Checksum does not agree for {filename}")
@@ -306,6 +303,7 @@ class Trainer:
             dtype=data_loader_train.dtype,
             sharding=data_loader_train.sharding.jax,
         )
+        tokens_per_iter = model.config.block_size * data_loader_train.batch_size
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
         data_loader_validate = data_loader_validate.iter(
@@ -318,7 +316,7 @@ class Trainer:
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
-            mfu = float("NaN")
+            mfu, tps = float("NaN"), float("NaN")
 
             for n_iter, batch in zip(
                 range(self.optimizer.max_iters), data_loader_train
@@ -334,7 +332,7 @@ class Trainer:
                     )
                     lr = float(opt_state[1].hyperparams["learning_rate"])
                     pbar.set_postfix_str(
-                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}"
+                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}, tok/s: {sizeof_fmt(tps, system='decimal')}"
                     )
 
                     if self.wandb_log:
@@ -346,6 +344,7 @@ class Trainer:
                                 "lr": lr,
                                 "shard": batch.idx_shard,
                                 "mfu": mfu,
+                                "tok/s": tps,
                             }
                         )
 
@@ -353,9 +352,9 @@ class Trainer:
                 model, opt_state = train_step(model, opt_state, batch, rng_key)
 
                 # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
-                mfu = (
-                    3 * flops.per_iter / FLOPS_UNIT / (time.perf_counter() - time_start)
-                )
+                dt = time.perf_counter() - time_start
+                mfu = 3 * flops.per_iter / FLOPS_UNIT / dt
+                tps = tokens_per_iter / dt
                 pbar.update(1)
 
         return model
@@ -458,7 +457,7 @@ def get_configs():
                 Config.read(filename),
             )
         except ValueError as e:
-            log.warning(f"Error in file {filename.name}, {e}")
+            log.warning(f"Error in file '{filename.name}', {e}")
 
     return configs
 
