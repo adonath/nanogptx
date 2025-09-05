@@ -494,12 +494,13 @@ if __name__ == "__main__":
     else:
         model = GPT.from_pretrained(config.init_from)
 
+    spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
+    model = model.init(rng_key=config.rng_key, **spec)
+
     log.info(f"{model.info()}")
 
-    spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
-
     model = config.training.train(
-        model=model.init(rng_key=config.rng_key, **spec),
+        model=model,
         data_loader_train=data_loader_train,
         data_loader_validate=data_loader_validate,
         rng_key=config.rng_key,
