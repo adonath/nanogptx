@@ -18,10 +18,16 @@ The purpose of this repository is mostly documenting my own learning progress on
 
 ## Getting started
 This repositiry comes with mutiple pre-defined environments in a `pixi.toml` file. This makes it very covenient to run the model in CPU, GPU and even TPU (soon...) environments.
-To get started, you first [install pixi](https://pixi.sh/latest/installation/), then proceed with one of the options:
+To get started, you first [install pixi](https://pixi.sh/latest/installation/) using:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | sh
+```
+
+And then proceed with one of the options:
 
 ### (a) Training a Small Model on "Tiny Shakespeare" and CPU
-To train a small transformer model with character level encoding on the "tiny Shakespeare" dataset you can use:
+To train a small transformer model with character level encoding on the "Tiny Shakespeare" dataset you can use:
 
 ```bash
 pixi run download --dataset shakespeare
@@ -30,9 +36,10 @@ pixi run train --environment cpu train-shakespeare-char
 pixi run sample --init-from resume --sample.rmax-new-tokens 500 --sampler.num-samples 5
 ```
 The workflow always consists of those four steps. The training should finish in <2 minutes on a M1 type machine.
+All the sub-commands have a `--help` option which shows you the available configuration options.
 
 
-### (b) Training a GPT2 124m Model on Fineweb10b and GPU
+### (b) Training a GPT2 124m Model on Fineweb10b and mutiple GPUs
 To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for example:
 ```bash
 pixi run download --dataset fineweb_10b
@@ -45,9 +52,9 @@ pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
 
 ## NanoGPTX Features
 
-Here are some of the features of this implementation:
+Here are some of the features of the `nanogptx` implementation:
 
-- 🗄️ **Hierarchical configuration:** I do like hierarchical configuration as long as it is not too deep (3-4 levels max). The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations for serialization and deserialization. The configuration requires setting defaults and on I/O it does type coercion to the default type, to catch errors early.
+- 🗄️ **Hierarchical configuration:** I do like hierarchical configuration as long as it is not too deep (3-4 levels max). The confiuration system is based on TOML and dataclasses, combined with JAX pytree operations and [dacite](https://github.com/konradhalas/dacite) for serialization and deserialization. The configuration requires setting defaults and on I/O it does type coercion to the default type, to catch errors early.
 - 💻 **CLI:** after careful consideration I have decied to support a CLI via [tyro](https://brentyi.github.io/tyro/). The code overhead is minimal, as all the configuration is in dataclasses anyway. And tyro offers a nice default interface as well as nested commands.
 - ✨ **Abstract evaluation and lazy initialization:** I think it is useful to not fully instantiate a model on creation, but rather instantiate an abstract description of the array shapes, dtypes and shardings. This allows for an abstract evaluation which catches shape, dtype and sharding errors early without using any flops.
 - 🗃️ **Minimal provenance:** The implementation supports minimal provenance of model configs, datasets and training. This includes logging of which batch is trained on, saving configs in model files and verifying data hashes.
@@ -57,7 +64,9 @@ Here are some of the features of this implementation:
 - 📇 **Logging**: just as the original nanoGPT this project uses [WandB](https://wandb.ai/) for logging. I have considered alternatives (especially local solutions), but found other solutions introduced more complexity with fewer features.
 
 ## How to work with this Repository
-This repository can be used as template for your own small to mid-scale research and educational projects.
+This repository can be used as template for your own small to mid-scale research and educational projects. You can explore different training strategies,
+modified architectures etc. As everything is in pure JAX, you can modify any small component in the model, without the need of implementing whole new layers.
+`nanogptx` still provides the whole scalable infrastructure.
 
 ### Adding a new Dataset
 If you would like to add a new dataset follow these steps:
