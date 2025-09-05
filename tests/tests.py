@@ -1,4 +1,4 @@
-# TODO: add some unit tests...
+# TODO: add some unit tests e.g. comparing against Pytorch. And making sure some basic functionality is covered.
 
 import jax
 from jax import numpy as jnp
