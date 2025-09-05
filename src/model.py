@@ -37,6 +37,7 @@ DEFAULT_INIT_STD = 0.02
 DEFAULT_DTYPE = JaxDtypesEnum.float32
 DEFAULT_RNG_KEY = jax.random.key(98238)
 DEFAULT_DEVICE = tuple(JaxDevicesEnum)[0]
+DOT_PRODUCT_ATTENTION = "cudnn" if "cuda" in str(DEFAULT_DEVICE) else "xla"
 
 
 class Axis(int, Enum):
@@ -474,6 +475,7 @@ class CausalSelfAttention:
             key=key,
             value=value,
             is_causal=True,
+            implementation=DOT_PRODUCT_ATTENTION,
         )
 
         x = jnp.reshape(x_dpa, x.shape)
