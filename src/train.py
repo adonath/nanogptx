@@ -347,7 +347,7 @@ class Trainer:
                     )
                     lr = float(opt_state[1].hyperparams["learning_rate"])
                     pbar.set_postfix_str(
-                        f"Loss train: {loss_train:.3f}, Loss val: {loss_val:.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}, tok/s: {sizeof_fmt(tps, system='decimal')}"
+                        f"Loss train: {loss_train.item():.3f}, Loss val: {loss_val.item():.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}, tok/s: {sizeof_fmt(tps, system='decimal')}"
                     )
 
                     if self.wandb_log:
