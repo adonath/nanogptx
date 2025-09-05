@@ -349,7 +349,9 @@ class Trainer:
                         )
 
                 rng_key = jax.random.fold_in(rng_key, n_iter)
-                model, opt_state = train_step(model, opt_state, batch, rng_key)
+                model, opt_state = jax.block_until_ready(
+                    train_step(model, opt_state, batch, rng_key)
+                )
 
                 # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
                 dt = time.perf_counter() - time_start
