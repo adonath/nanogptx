@@ -31,7 +31,7 @@ To train a small transformer model with character level encoding on the "Tiny Sh
 
 ```bash
 pixi run download --dataset shakespeare
-pixi run prepare --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1
+pixi run prepare  --environment prepare --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1
 pixi run train --environment cpu train-shakespeare-char
 pixi run sample --init-from resume --sample.rmax-new-tokens 500 --sampler.num-samples 5
 ```
@@ -43,7 +43,7 @@ All the sub-commands have a `--help` option which shows you the available config
 To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for example:
 ```bash
 pixi run download --dataset fineweb_10b
-pixi run prepare --dataset fineweb_10b
+pixi run prepare --environment prepare --dataset fineweb_10b
 pixi run train  --environment gpu train-fineweb-10b --sharding.devices cuda:0,cuda:1 --loading.sharding.devices cuda:0,cuda:1
 pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
 ```
