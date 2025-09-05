@@ -1,4 +1,29 @@
-"""Here are some thoughts on how to structure the code"""
+"""Here are some thoughts on how I structured the code
+
+I think JAX and dataclasses are a great fit. I use the dataclasses
+in the followwing way:
+
+- "Modules" are defined as dataclasses (e.g. GPT, Embedding, LayerNorm, etc.)
+- They define a namespace that combines the parameters with the forward pass
+- Classes are registered with JAX and can be combined into a hierarchical PyTree structure, that JAX natively understands
+- Configuration is kept separate, I never store configuration in the class, but just initialize its state using
+alternative constructors such as .from_config()
+- This keeps the model hierarchy clean and keeps serialization etc. simple.
+- When I need additonal attributes I implement them as properties, which are derived from the parameter state (such as .vocab_size, .n_embd, etc.)
+- This way the classes do not have to be frozen but their state can be modified after initialization without going "out of sync"
+
+What I do like:
+- The code turned out very clean and readable.
+- The lazy initialization via ArrayInfo is very nice and useful. Especially also implementing the
+the intiialization from safetensors as delayed initialization with post init hook.
+- The use of Enum for axis and dtype is very nice and makes the code more readable.
+
+What I currently do not like:
+
+- The .from_config() methods introduce a lot of boilerplate code. I have experimented with injecting the default values
+via a context manager and context vars, but the pattern felt a bit too unusual.
+
+"""
 
 from __future__ import annotations
 
@@ -199,7 +224,7 @@ class ArrayInfo:
 
 
 def init_array_leaves(rng_key, dtype=None, out_sharding=None):
-    """State base callable"""
+    """State based callable for initializing arrays"""
 
     def init(leave):
         nonlocal rng_key
@@ -234,7 +259,7 @@ class Embedding:
 
     @staticmethod
     def pad_to_multiple_of(x, multiple=128, value=jnp.nan):
-        """Pad to multiple of"""
+        """Pad to multiple of a value"""
         vocab_size = x.shape[EmbeddingAxis.vocab]
         new_vocab_size = ((vocab_size + multiple - 1) // multiple) * multiple
         padding = new_vocab_size - vocab_size
@@ -514,7 +539,7 @@ class Block:
         return x
 
 
-Flops = namedtuple("Flops", ["per_token", "per_iter", "per_fwdbwd"])
+Flops = namedtuple("Flops", ["per_token", "per_iter", "per_fwdbwd", "tokens_per_iter"])
 
 
 @dataclass
@@ -544,8 +569,8 @@ class GPT:
         if isinstance(self.lm_head.weight, jax.Array):
             self.lm_head.weight = self.lm_head.weight.at[:].set(self.wte.weight)
 
-    @partial(jax.jit, static_argnames=("is_training",))
-    def __call__(self, idx, rng_key, is_training):
+    @partial(jax.jit, static_argnames=("is_training", "inference"))
+    def __call__(self, idx, rng_key, is_training, inference=False):
         pos = jnp.arange(idx.shape[Axis.sequence])
 
         tok_emb = self.wte(idx)
@@ -560,7 +585,7 @@ class GPT:
 
         x = self.ln_f(x)
 
-        if not is_training:
+        if inference:
             return self.lm_head(x[:, [-1], :])
 
         logits = self.lm_head(x)
@@ -604,6 +629,7 @@ class GPT:
             per_token=flops_per_token,
             per_fwdbwd=flops_per_fwdbwd,
             per_iter=flops_per_iter,
+            tokens_per_iter=self.config.block_size * batch_size,
         )
 
     def info(self, non_embedding=True):

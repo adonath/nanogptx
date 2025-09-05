@@ -294,22 +294,25 @@ class Trainer:
             batch = stack_batches(
                 [batch for _, batch in zip(range(n_iter), data_loader)]
             )
-            return loss_fn(model, batch, rng_key=jax.random.key(8273), is_training=True)
+            return loss_fn(
+                model, batch, rng_key=jax.random.key(8273), is_training=False
+            )
 
         @partial(jax.jit, donate_argnames=("model", "opt_state"))
         def train_step(model, opt_state, batch, rng):
             """Training step"""
-            grads = jax.grad(loss_fn)(model, batch, rng, is_training=True)
+            value, grads = jax.value_and_grad(loss_fn)(
+                model, batch, rng, is_training=True
+            )
             updates, opt_state = self.optimizer.optax.update(grads, opt_state, model)
             model = optax.apply_updates(model, updates)
-            return model, opt_state
+            return model, opt_state, value
 
         flops = model.flops(
             batch_size=data_loader_train.batch_size,
             dtype=data_loader_train.dtype,
             sharding=data_loader_train.sharding.jax,
         )
-        tokens_per_iter = model.config.block_size * data_loader_train.batch_size
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
         data_loader_validate = data_loader_validate.iter(
@@ -322,17 +325,23 @@ class Trainer:
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
-            mfu, tps = float("NaN"), float("NaN")
-
             for n_iter, batch in zip(
                 range(self.optimizer.max_iters), data_loader_train
             ):
                 time_start = time.perf_counter()
 
+                rng_key = jax.random.fold_in(rng_key, n_iter)
+                model, opt_state, loss_train = jax.block_until_ready(
+                    train_step(model, opt_state, batch, rng_key)
+                )
+
+                # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
+                dt = time.perf_counter() - time_start
+
+                mfu = 3 * flops.per_iter / FLOPS_UNIT / dt
+                tps = flops.tokens_per_iter / dt
+
                 if n_iter % self.eval_interval == 0:
-                    loss_train = estimate_mean_loss(
-                        model, data_loader_train, n_iter=self.eval_iters
-                    )
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
                     )
@@ -354,15 +363,6 @@ class Trainer:
                             }
                         )
 
-                rng_key = jax.random.fold_in(rng_key, n_iter)
-                model, opt_state = jax.block_until_ready(
-                    train_step(model, opt_state, batch, rng_key)
-                )
-
-                # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
-                dt = time.perf_counter() - time_start
-                mfu = 3 * flops.per_iter / FLOPS_UNIT / dt
-                tps = tokens_per_iter / dt
                 pbar.update(1)
 
         return model

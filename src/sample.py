@@ -52,7 +52,9 @@ class TokenSampler:
                 block_size,
                 axis=Axis.sequence,
             )
-            logits = model(context_window, rng_key=rng_key, is_training=False)
+            logits = model(
+                context_window, rng_key=rng_key, is_training=False, inference=True
+            )
             logits = logits[:, -1:, :] / self.temperature
 
             if top_k is not None:
