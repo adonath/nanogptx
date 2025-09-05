@@ -33,7 +33,7 @@ To train a small transformer model with character level encoding on the "Tiny Sh
 pixi run download --dataset shakespeare
 pixi run --environment prepare prepare --dataset shakespeare --encoding char --shard-size 1000000 --shards-val 1
 pixi run --environment cpu train train-shakespeare-char
-pixi run sample --init-from resume --sample.rmax-new-tokens 500 --sampler.num-samples 5
+pixi run --environment cpu sample --init-from resume --sampler.max-new-tokens 500 --sampler.num-samples 5
 ```
 The workflow always consists of those four steps. The training should finish in <2 minutes on a M1 type machine.
 All the sub-commands have a `--help` option which shows you the available configuration options.
@@ -45,7 +45,7 @@ To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for
 pixi run download --dataset fineweb_10b
 pixi run --environment prepare prepare --dataset fineweb_10b
 pixi run --environment gpu train train-fineweb-10b --sharding.devices cuda:0,cuda:1 --loading.sharding.devices cuda:0,cuda:1
-pixi run sample --init-from resume --max-new-tokens 500 --num-samples 5
+pixi run --envrionment gpu sample --init-from resume --sampler.max-new-tokens 500 --sampler.num-samples 5
 ```
 `nanogptx` supports a simple SPMD (single program multiple data) distribution strategy, meaning groups of batches are evaluated in parallel on the configured devices.
 
@@ -76,6 +76,9 @@ An you can enable it using:
 pixi run --environment cpu-profile train train-shakespeare-char --profile
 pixi run --environment gpu-profile train train-fineweb-10b --sharding.devices cuda:0,cuda:1 --loading.sharding.devices cuda:0,cuda:1 --profile
 ```
+
+⚠️ **Note**: the profiling requires `tensorflow` to be available in the same environment. This potentially leaves you with a different version of JAX,
+that is used for the profiling:
 
 
 ### Adding a new Dataset
