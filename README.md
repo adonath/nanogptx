@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/github/license/adonath/nanogptx)](https://img.shields.io/github/license/adonath/nanogptx)
 
 <p align="center">
-<img width="61.8%" src="https://raw.githubusercontent.com/adonath/nanogptx/main/assets/nanogpt-jax.jpg" alt="Banner"/>
+<img width="90%" src="https://raw.githubusercontent.com/adonath/nanogptx/main/assets/nanogpt-jax.jpg" alt="Banner"/>
 </p>
 
 ## Purpose of this Repository
