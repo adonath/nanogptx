@@ -17,7 +17,7 @@ import tomli_w
 import tomllib
 import tyro
 from dacite import Config as DaciteConfig
-from dacite import from_dict
+from dacite import UnexpectedDataError, from_dict
 from jax import numpy as jnp
 from jax import tree_util
 from safetensors import safe_open
@@ -267,12 +267,12 @@ class Trainer:
     log_interval: int = 1
     eval_interval: int = 2000
     eval_iters: int = 3
-    always_save_checkpoint: bool = (
-        True  # if True, always save a checkpoint after each evals
-    )
+    checkpoint_interval: int = 5000
     show_progress: bool = True  # show progress bar
     wandb_log: bool = False
     total_batch_size: int = 256  # total batch size in units of tokens
+    checkpoint_path: Path = PATH_DATA / "checkpoints"
+    filename_pattern: str = "checkpoint-{n_iter}.safetensors"
 
     def train(self, model, data_loader_train, data_loader_validate, rng_key):
         """Train model"""
@@ -327,7 +327,7 @@ class Trainer:
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
             for n_iter, batch in zip(
-                range(self.optimizer.max_iters), data_loader_train
+                range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
                 time_start = time.perf_counter()
 
@@ -364,6 +364,12 @@ class Trainer:
                             }
                         )
 
+                if n_iter % self.checkpoint_interval == 0:
+                    model.write(
+                        self.checkpoint_path
+                        / self.filename_pattern.format(n_iter=n_iter)
+                    )
+
                 pbar.update(1)
 
         return model
@@ -393,6 +399,10 @@ class Config:
         tokens_per_iter = self.model.block_size * self.loading.batch_size
         accum_steps = self.training.total_batch_size // tokens_per_iter
         self.training.optimizer.gradient_accumulation_steps = max(accum_steps, 1)
+        self.training.checkpoint_path = (
+            PATH_DATA / "checkpoints" / self.logging.wandb_run_name
+        )
+        self.training.filename_pattern = "model-n-iter-{n_iter}.safetensors"
 
     @property
     def rng_key(self) -> jax.Array:
@@ -466,7 +476,7 @@ def get_configs():
                 f"Default configuration from {filename.name}",
                 Config.read(filename),
             )
-        except ValueError as e:
+        except (ValueError, UnexpectedDataError) as e:
             log.warning(f"Error in file '{filename.name}', {e}")
 
     return configs
@@ -525,7 +535,8 @@ if __name__ == "__main__":
     filename = (
         PATH_DATA
         / "checkpoints"
-        / f"model-{config.logging.wandb_run_name}-final.safetensors"
+        / config.logging.wandb_run_name
+        / "model-final.safetensors"
     )
 
     filename.parent.mkdir(parents=True, exist_ok=True)

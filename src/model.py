@@ -756,6 +756,7 @@ class GPT:
         if metadata is None:
             metadata = flatten_pytree_with_path(self.config, parse_type=str)
 
+        path.parent.mkdir(parents=True, exist_ok=True)
         log.info(f"Writing model to {path}")
         save_file(data, path, metadata=metadata)
 
