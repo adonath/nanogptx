@@ -59,6 +59,7 @@ DACITE_CAST = [
     str,
     float,
     bool,
+    Path,
 ]
 DACITE_CONFIG = DaciteConfig(cast=DACITE_CAST, strict=True)
 
@@ -274,7 +275,7 @@ class Trainer:
     checkpoint_path: Path = PATH_DATA / "checkpoints"
     filename_pattern: str = "checkpoint-{n_iter}.safetensors"
 
-    def train(self, model, data_loader_train, data_loader_validate, rng_key):
+    def train(self, model, data_loader_train, data_loader_validate, rng_key, metadata):
         """Train model"""
 
         log.info(
@@ -367,7 +368,8 @@ class Trainer:
                 if n_iter % self.checkpoint_interval == 0:
                     model.write(
                         self.checkpoint_path
-                        / self.filename_pattern.format(n_iter=n_iter)
+                        / self.filename_pattern.format(n_iter=n_iter),
+                        metadata=metadata,
                     )
 
                 pbar.update(1)
@@ -530,6 +532,7 @@ if __name__ == "__main__":
             data_loader_train=data_loader_train,
             data_loader_validate=data_loader_validate,
             rng_key=config.rng_key,
+            metadata=config.to_safetensors_meta(),
         )
 
     filename = (
