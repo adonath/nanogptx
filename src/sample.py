@@ -155,11 +155,11 @@ def sample(config):
 if __name__ == "__main__":
     config = tyro.cli(SampleConfig)
 
-    start_time = time.time()
+    start_time = time.perf_counter()
     sample(config=config)
-    end_time = time.time()
+    end_time = time.perf_counter()
 
     tokens_per_second = (config.sampler.num_samples * config.sampler.max_new_tokens) / (
         end_time - start_time
     )
-    log.info(f"Sampled at {tokens_per_second:.2f} TPS")
+    log.info(f"Sampled at {tokens_per_second:.2f} tok/s")
