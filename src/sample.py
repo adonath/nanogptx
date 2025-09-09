@@ -112,7 +112,7 @@ class SampleConfig:
 def sample(config):
     """Sample from a GPT style model"""
     if config.init_from == InitFromEnum.resume:
-        candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
+        candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
         latest = max(candidates, key=os.path.getctime)
         model = GPT.read(
             latest,
