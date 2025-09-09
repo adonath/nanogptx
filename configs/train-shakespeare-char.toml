@@ -6,7 +6,7 @@ dtype = "float32"
 [training]
 eval_interval = 100 # keep frequent because we'll overfit
 eval_iters = 20
-always_save_checkpoint = false
+checkpoint_interval = 1000
 
 [training.optimizer]
 gradient_accumulation_steps = 1
@@ -17,6 +17,7 @@ min_lr = 1e-4 # learning_rate / 10 usually
 beta1 = 0.9
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 warmup_iters = 100 # not super necessary potentially
+
 
 [loading]
 batch_size = 16

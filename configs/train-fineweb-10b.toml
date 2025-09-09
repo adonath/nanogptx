@@ -19,9 +19,9 @@ partition = []
 
 [training]
 log_interval = 1
-eval_interval = 500
+eval_interval = 250
 eval_iters = 3
-always_save_checkpoint = true
+checkpoint_interval = 5000
 show_progress = true
 wandb_log = false
 total_batch_size = 524288
@@ -29,7 +29,7 @@ total_batch_size = 524288
 [training.optimizer]
 learning_rate = 0.0006
 max_iters = 18865
-weight_decay = 0.0
+weight_decay = 0.1
 beta1 = 0.9
 beta2 = 0.95
 grad_clip = 1.0
@@ -39,7 +39,7 @@ lr_decay_iters = 18865
 min_lr = 6e-05
 
 [loading]
-batch_size = 512 # (n_devices * 64)
+batch_size = 512 # (n_devices * micro_batch_size) (8 * 64)
 verify = true
 seed = 8273
 dtype = "int32"
