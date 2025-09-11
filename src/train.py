@@ -392,11 +392,6 @@ class Config:
     dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
     training: Trainer = field(default_factory=Trainer)
     loading: DatasetLoader = field(default_factory=DatasetLoader)
-    validation: list[DatasetLoader] = field(
-        default_factory=lambda _: [
-            DatasetLoader,
-        ]
-    )
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
     profile: bool = False
