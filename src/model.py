@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields, replace
@@ -46,7 +47,7 @@ from jax import tree_util
 from safetensors import safe_open
 from safetensors.flax import save_file
 
-from utils import PATH_DATA, PretrainedModels, sizeof_fmt
+from utils import PATH_DATA, InitFromEnum, PretrainedModels, sizeof_fmt
 from utils_jax import (
     JaxDevicesEnum,
     JaxDtypesEnum,
@@ -705,6 +706,22 @@ class GPT:
             )
 
         return cls.read(filename_model, **kwargs)
+
+    @classmethod
+    def from_init(cls, init_from: InitFromEnum, config: GPTConfig = None):
+        """Create from init enum"""
+        if init_from == InitFromEnum.scratch:
+            if config is None:
+                raise ValueError("Init from `scratch` requires defining `config`")
+            model = cls.from_config(config)
+        elif init_from == InitFromEnum.resume:
+            candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
+            latest = max(candidates, key=os.path.getctime)
+            model = cls.read(latest, transpose_weights=False)
+        else:
+            model = cls.from_pretrained(init_from)
+
+        return model
 
     @classmethod
     def read(cls, path, transpose_weights=True, **kwargs) -> GPT:
