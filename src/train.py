@@ -109,11 +109,16 @@ class OptimizerConfig:
             end_value=self.min_lr,
         )
 
+        def mask_fn(params):
+            """Select 2D parameters for decay"""
+            return jax.tree.map(lambda x: x.ndim >= 1, params)
+
         adamw = optax.inject_hyperparams(optax.adamw)(
             learning_rate=lr_scheduler,
             b1=self.beta1,
             b2=self.beta2,
             weight_decay=self.weight_decay,
+            mask=mask_fn,
         )
 
         return optax.chain(
