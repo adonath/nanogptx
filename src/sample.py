@@ -8,7 +8,6 @@ import jax
 import jax.numpy as jnp
 import tiktoken
 import tyro
-from jax import tree_util
 from safetensors import safe_open
 
 from model import DEFAULT_DEVICE, GPT, Axis
@@ -23,7 +22,6 @@ PREFIX = "FILE:"
 log = logging.getLogger(__file__)
 
 
-@tree_util.register_dataclass
 @dataclass
 class TokenSampler:
     """Token sampler"""
@@ -82,7 +80,6 @@ class TokenSampler:
 
 
 # fmt: off
-@tree_util.register_dataclass
 @dataclass
 class SampleConfig:
     """Sampling configuration"""
