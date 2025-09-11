@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import time
 from collections import namedtuple
 from contextlib import nullcontext
@@ -515,14 +514,7 @@ if __name__ == "__main__":
 
     log.info(f"Using devices {config.sharding.jax.device_set}")
 
-    if config.init_from == InitFromEnum.scratch:
-        model = GPT.from_config(config.model)
-    elif config.init_from == InitFromEnum.resume:
-        candidates = (PATH_DATA / "checkpoints").glob("*.safetensors")
-        latest = max(candidates, key=os.path.getctime)
-        model = GPT.read(latest)
-    else:
-        model = GPT.from_pretrained(config.init_from)
+    model = GPT.from_init(config.init_from, config.model)
 
     spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
     model = model.init(rng_key=config.rng_key, **spec)

@@ -111,14 +111,14 @@ class SampleConfig:
 
 def sample(config):
     """Sample from a GPT style model"""
+    if config.init_from == InitFromEnum.scratch:
+        raise ValueError("Init from `scratch` is not supported for sampling")
+
+    model = GPT.from_init(config.init_from)
+
     if config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
         latest = max(candidates, key=os.path.getctime)
-        model = GPT.read(
-            latest,
-            transpose_weights=False,
-        )
-
         with safe_open(latest, framework="numpy") as f:
             from train import Config
 
@@ -126,7 +126,6 @@ def sample(config):
             encoding = ENCODINGS[config_all.loading.index.encoding]
     else:
         encoding = tiktoken.get_encoding("gpt2")
-        model = GPT.from_pretrained(config.init_from)
 
     x = jnp.asarray(
         encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
