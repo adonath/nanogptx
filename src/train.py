@@ -293,7 +293,7 @@ class Trainer:
                 # the key can be ignored here, because dropout is skipped
                 value = loss_fn(
                     model, batch, rng_key=jax.random.key(8273), is_training=False
-                )
+                ).block_until_ready()
                 losses.append(value)
 
             return np.mean(losses)
