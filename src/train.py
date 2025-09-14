@@ -293,10 +293,10 @@ class Trainer:
                 # the key can be ignored here, because dropout is skipped
                 value = loss_fn(
                     model, batch, rng_key=jax.random.key(8273), is_training=False
-                ).block_until_ready()
+                )
                 losses.append(value)
 
-            return np.mean(losses)
+            return jnp.mean(jnp.asarray(losses))
 
         @partial(jax.jit, donate_argnames=("model", "opt_state"))
         def train_step(model, opt_state, batch, rng):
