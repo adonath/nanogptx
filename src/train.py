@@ -23,7 +23,7 @@ from safetensors import safe_open
 from tqdm import tqdm
 
 import wandb
-from model import GPT, Axis, GPTConfig
+from model import GPT, GPTConfig
 from utils import (
     FLOPS_UNIT,
     PATH_BASE,
@@ -129,16 +129,6 @@ class OptimizerConfig:
 
 
 Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
-
-
-def stack_batches(batches):
-    """Stack batches"""
-    return Batch(
-        x=jnp.concatenate([batch.x for batch in batches], axis=Axis.batch),
-        y=jnp.concatenate([batch.y for batch in batches], axis=Axis.batch),
-        idx_shard=None,
-        idx_batches=None,
-    )
 
 
 @tree_util.register_dataclass
@@ -294,15 +284,19 @@ class Trainer:
             ).mean()
             return loss
 
-        @partial(jax.jit, static_argnames=("n_iter", "data_loader"))
         def estimate_mean_loss(model, data_loader, n_iter):
             """Estimate mean loss across multiple iters"""
-            batch = stack_batches(
-                [batch for _, batch in zip(range(n_iter), data_loader)]
-            )
-            return loss_fn(
-                model, batch, rng_key=jax.random.key(8273), is_training=False
-            )
+            losses = []
+
+            # the range constrains the infinite data loader
+            for _, batch in zip(range(n_iter), data_loader):
+                # the key can be ignored here, because dropout is skipped
+                value = loss_fn(
+                    model, batch, rng_key=jax.random.key(8273), is_training=False
+                )
+                losses.append(value)
+
+            return np.mean(losses)
 
         @partial(jax.jit, donate_argnames=("model", "opt_state"))
         def train_step(model, opt_state, batch, rng):
@@ -341,7 +335,7 @@ class Trainer:
                     train_step(model, opt_state, batch, rng_key)
                 )
 
-                # TODO: compute the actual flops from train_step for now just use 1/2 for fwd / bkw ratio
+                # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
                 dt = time.perf_counter() - time_start
 
                 mfu = 3 * flops.per_iter / FLOPS_UNIT / dt
