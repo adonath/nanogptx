@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from collections import namedtuple
 from contextlib import nullcontext
@@ -128,7 +129,9 @@ class OptimizerConfig:
 # fmt: on
 
 
-Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches"])
+Batch = namedtuple(
+    "Batch", ["x", "y", "idx_shard", "idx_batches", "idx"], defaults=5 * (None,)
+)
 
 
 @tree_util.register_dataclass
@@ -209,6 +212,7 @@ class DatasetLoader:
     @property
     def filenames(self):
         """Absolute filenames of the loader"""
+        # TODO: could be made an attribute for direct declaration of filenames
         return self.index.filenames_absolute
 
     @property
@@ -239,7 +243,7 @@ class DatasetLoader:
                     raise ValueError(f"Checksum does not agree for {filename}")
 
             # we aim for a statistical coverage here...
-            for _ in range(len(data) // self.batch_size // block_size):
+            for idx in range(len(data) // self.batch_size // block_size):
                 max_val = len(data) - block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
 
@@ -248,6 +252,7 @@ class DatasetLoader:
                 yield Batch(
                     x=jax.device_put(x, self.sharding.jax),
                     y=jax.device_put(y, self.sharding.jax),
+                    idx=idx,
                     idx_shard=idx_shard,
                     idx_batches=idx_batches,
                 )
@@ -269,7 +274,15 @@ class Trainer:
     checkpoint_path: Path = PATH_DATA / "checkpoints"
     filename_pattern: str = "checkpoint-{n_iter}.safetensors"
 
-    def train(self, model, data_loader_train, data_loader_validate, rng_key, metadata):
+    def train(
+        self,
+        model,
+        data_loader_train,
+        data_loader_validate,
+        rng_key,
+        metadata,
+        resume_from=-1,
+    ):
         """Train model"""
 
         log.info(
@@ -328,11 +341,16 @@ class Trainer:
             for n_iter, batch in zip(
                 range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
+                if n_iter <= resume_from:
+                    pbar.update(1)
+                    continue
+
                 time_start = time.perf_counter()
 
-                rng_key = jax.random.fold_in(rng_key, n_iter)
+                sub_rng_key = jax.random.fold_in(rng_key, n_iter)
+
                 model, opt_state, loss_train = jax.block_until_ready(
-                    train_step(model, opt_state, batch, rng_key)
+                    train_step(model, opt_state, batch, sub_rng_key)
                 )
 
                 # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
@@ -364,6 +382,7 @@ class Trainer:
                         )
 
                 if n_iter % self.checkpoint_interval == 0:
+                    metadata["n-iter"] = str(n_iter)
                     model.write(
                         self.checkpoint_path
                         / self.filename_pattern.format(n_iter=n_iter),
@@ -493,6 +512,8 @@ if __name__ == "__main__":
             config=asdict(config),
         )
 
+    metadata = config.to_safetensors_meta()
+
     data_loader_train = config.loading
     log.info(f"Training dataset has {data_loader_train.index.n_tokens_total} tokens.")
 
@@ -502,6 +523,15 @@ if __name__ == "__main__":
     )
 
     log.info(f"Using devices {config.sharding.jax.device_set}")
+
+    resume_from = -1
+    if config.init_from == InitFromEnum.resume:
+        candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
+        latest = max(candidates, key=os.path.getctime)
+
+        with safe_open(latest, framework="numpy") as f:
+            log.info(f"Reading metadata from {latest}")
+            resume_from = int(f.metadata()["n-iter"])
 
     model = GPT.from_init(config.init_from, config.model)
 
@@ -523,7 +553,8 @@ if __name__ == "__main__":
             data_loader_train=data_loader_train,
             data_loader_validate=data_loader_validate,
             rng_key=config.rng_key,
-            metadata=config.to_safetensors_meta(),
+            metadata=metadata,
+            resume_from=resume_from,
         )
 
     filename = (
