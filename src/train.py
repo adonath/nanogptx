@@ -353,10 +353,16 @@ class Trainer:
                     train_step(model, opt_state, batch, sub_rng_key)
                 )
 
-                # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
                 dt = time.perf_counter() - time_start
 
-                mfu = 3 * flops.per_iter / FLOPS_UNIT / dt
+                # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
+                mfu = (
+                    3
+                    * self.optimizer.gradient_accumulation_steps
+                    * flops.per_iter
+                    / FLOPS_UNIT
+                    / dt
+                )
                 tps = flops.tokens_per_iter / dt
 
                 if n_iter % self.eval_interval == 0:
