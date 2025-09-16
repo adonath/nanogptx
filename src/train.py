@@ -24,7 +24,7 @@ from safetensors import safe_open
 from tqdm import tqdm
 
 import wandb
-from model import GPT, GPTConfig
+from model import DOT_PRODUCT_ATTENTION, GPT, GPTConfig
 from utils import (
     FLOPS_UNIT,
     PATH_BASE,
@@ -523,6 +523,7 @@ if __name__ == "__main__":
     )
 
     log.info(f"Using devices {config.sharding.jax.device_set}")
+    log.info(f"Using `{DOT_PRODUCT_ATTENTION}` dot product implementation.")
 
     resume_from = -1
     if config.init_from == InitFromEnum.resume:
