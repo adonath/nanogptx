@@ -554,7 +554,7 @@ class GPTInfo:
         return f"GPT Model: {sizeof_fmt(self.n_parameters, system="decimal")} parameters | {sizeof_fmt(self.n_bytes)}"
 
 
-@tree_util.register_dataclass
+@tree_util.register_pytree_node_class
 @dataclass
 class GPT:
     """GPT Transformer model"""
@@ -566,9 +566,18 @@ class GPT:
     ln_f: LayerNorm
     lm_head: Linear
 
-    def __post_init__(self):
-        if isinstance(self.lm_head.weight, jax.Array):
-            self.lm_head.weight = self.lm_head.weight.at[:].set(self.wte.weight)
+    def tree_flatten(self):
+        """Custom tree flattening to handle shared weights"""
+        layers = (self.wte, self.wpe, self.drop, self.h, self.ln_f)
+        return (layers, None)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Custom tree un-flattening to handle shared weights"""
+        wte = children[0]
+        lm_head = Linear(weight=wte.weight, bias=None)
+        layers = children + (lm_head,)
+        return cls(*layers)
 
     @partial(jax.jit, static_argnames=("is_training", "inference"))
     def __call__(self, idx, rng_key, is_training, inference=False):
@@ -675,11 +684,7 @@ class GPT:
                 n_dim=config.n_embd,
                 use_bias=config.use_bias,
             ),
-            lm_head=Linear.from_n_features(
-                config.n_embd,
-                config.vocab_size,
-                use_bias=False,
-            ),
+            lm_head=None,
         )
 
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=None, device=None):
