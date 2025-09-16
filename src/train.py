@@ -510,15 +510,28 @@ def get_configs():
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(get_configs())
 
+    resume_from = -1
+    if config.init_from == InitFromEnum.resume:
+        candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
+        latest = max(candidates, key=os.path.getctime)
+
+        with safe_open(latest, framework="numpy") as f:
+            log.info(f"Reading metadata from {latest}")
+            resume_from = int(f.metadata()["n-iter"])
+            run_id = f.metadata().get("wandb-run-id")
+
+    metadata = config.to_safetensors_meta()
+
     if config.logging.wandb_log:
         run = wandb.init(
             project=config.logging.wandb_project,
             name=config.logging.wandb_run_name,
             tags=config.logging.wandb_tags,
             config=asdict(config),
+            id=int(run_id),
+            resume="allow",
         )
-
-    metadata = config.to_safetensors_meta()
+        metadata["wandb-run-id"] = str(run.id)
 
     data_loader_train = config.loading
     log.info(f"Training dataset has {data_loader_train.index.n_tokens_total} tokens.")
@@ -530,15 +543,6 @@ if __name__ == "__main__":
 
     log.info(f"Using devices {config.sharding.jax.device_set}")
     log.info(f"Using `{DOT_PRODUCT_ATTENTION}` dot product implementation.")
-
-    resume_from = -1
-    if config.init_from == InitFromEnum.resume:
-        candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
-        latest = max(candidates, key=os.path.getctime)
-
-        with safe_open(latest, framework="numpy") as f:
-            log.info(f"Reading metadata from {latest}")
-            resume_from = int(f.metadata()["n-iter"])
 
     model = GPT.from_init(config.init_from, config.model)
 
