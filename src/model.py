@@ -43,7 +43,10 @@ import jax
 from dacite import Config as DaciteConfig
 from dacite import from_dict
 from jax import numpy as jnp
-from jax import tree_util
+from jax.tree_util import (
+    register_dataclass,
+    tree_map_with_path,
+)
 from safetensors import safe_open
 from safetensors.flax import save_file
 
@@ -81,7 +84,7 @@ class EmbeddingAxis(int, Enum):
     embd = 1
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class GPTConfig:
     """Model configuration"""
@@ -241,7 +244,7 @@ def init_array_leaves(rng_key, dtype=None, out_sharding=None):
     return init
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class Embedding:
     """Embedding layer"""
@@ -285,7 +288,7 @@ class Embedding:
         return jnp.take(self.weight, x, axis=EmbeddingAxis.vocab)
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class LayerNorm:
     """Layer normalization"""
@@ -326,7 +329,7 @@ class LayerNorm:
         return x
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class Dropout:
     """Dropout layer"""
@@ -343,7 +346,7 @@ class Dropout:
         return x
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class Gelu:
     """Gaussian Error Linear Unit"""
@@ -355,7 +358,7 @@ class Gelu:
         return jax.nn.gelu(x, approximate=self.approximate)
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class Linear:
     """Linear layer"""
@@ -405,7 +408,7 @@ class Linear:
         return x
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class MLP:
     """Multi-layer perceptron"""
@@ -449,7 +452,7 @@ class MLP:
         return x
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class CausalSelfAttention:
     """Causal self-attention layer"""
@@ -510,7 +513,7 @@ class CausalSelfAttention:
         return x
 
 
-@tree_util.register_dataclass
+@register_dataclass
 @dataclass
 class Block:
     """Self-attention block"""
@@ -554,7 +557,7 @@ class GPTInfo:
         return f"GPT Model: {sizeof_fmt(self.n_parameters, system="decimal")} parameters | {sizeof_fmt(self.n_bytes)}"
 
 
-@tree_util.register_pytree_node_class
+@register_dataclass
 @dataclass
 class GPT:
     """GPT Transformer model"""
@@ -564,20 +567,11 @@ class GPT:
     drop: Dropout
     h: list[Block]
     ln_f: LayerNorm
-    lm_head: Linear
 
-    def tree_flatten(self):
-        """Custom tree flattening to handle shared weights"""
-        layers = (self.wte, self.wpe, self.drop, self.h, self.ln_f)
-        return (layers, None)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        """Custom tree un-flattening to handle shared weights"""
-        wte = children[0]
-        lm_head = Linear(weight=wte.weight, bias=None)
-        layers = children + (lm_head,)
-        return cls(*layers)
+    @property
+    def lm_head(self):
+        """Weight shared lm head"""
+        return Linear(weight=self.wte.weight, bias=None)
 
     @partial(jax.jit, static_argnames=("is_training", "inference"))
     def __call__(self, idx, rng_key, is_training, inference=False):
@@ -684,7 +678,6 @@ class GPT:
                 n_dim=config.n_embd,
                 use_bias=config.use_bias,
             ),
-            lm_head=None,
         )
 
     def init(self, rng_key=DEFAULT_RNG_KEY, dtype=None, device=None):
@@ -755,9 +748,6 @@ class GPT:
             if any(name.endswith(_) for _ in transposed) and transpose_weights:
                 array_infos[name].post_init = jnp.matrix_transpose
 
-        # tied parameters are missing, just create a reference as placeholder
-        array_infos["lm_head.weight"] = array_infos["wte.weight"]
-
         filename_json = path.parent / "config.json"
 
         if filename_json.exists():
@@ -767,7 +757,7 @@ class GPT:
 
         model = cls.from_config(replace(config, **kwargs))
 
-        return tree_util.tree_map_with_path(
+        return tree_map_with_path(
             update_leave_from_mapping(array_infos, use_default_if_missing=False), model
         )
 
