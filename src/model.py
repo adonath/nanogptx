@@ -649,7 +649,6 @@ class GPT:
             n_parameters -= self.wpe.weight.size
             n_bytes -= self.wpe.weight.nbytes
 
-        n_parameters -= self.lm_head.weight.size
         return GPTInfo(
             n_parameters=n_parameters,
             n_bytes=n_bytes,
