@@ -510,7 +510,7 @@ def get_configs():
 if __name__ == "__main__":
     config = tyro.extras.overridable_config_cli(get_configs())
 
-    resume_from = -1
+    resume_from, run_id = -1, None
     if config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
         latest = max(candidates, key=os.path.getctime)
@@ -528,7 +528,7 @@ if __name__ == "__main__":
             name=config.logging.wandb_run_name,
             tags=config.logging.wandb_tags,
             config=asdict(config),
-            id=int(run_id),
+            id=run_id,
             resume="allow",
         )
         metadata["wandb-run-id"] = str(run.id)
