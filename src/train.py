@@ -24,6 +24,7 @@ from safetensors import safe_open
 from tqdm import tqdm
 
 import wandb
+from evaluate import ModelEvaluator, load_hellaswag_examples
 from model import DOT_PRODUCT_ATTENTION, GPT, GPTConfig
 from utils import (
     FLOPS_UNIT,
@@ -267,6 +268,7 @@ class Trainer:
     log_interval: int = 1
     eval_interval: int = 2000
     eval_iters: int = 3
+    eval_hellaswag: bool = False
     checkpoint_interval: int = 5000
     show_progress: bool = True  # show progress bar
     wandb_log: bool = False
@@ -327,6 +329,13 @@ class Trainer:
             sharding=data_loader_train.sharding.jax,
         )
 
+        if self.eval_hellaswag:
+            evaluator = ModelEvaluator()
+            data_loader_hellaswag = load_hellaswag_examples(
+                path=PATH_DATA / "download/hellaswag/validation-00000-of-00001.parquet",
+                out_sharding=data_loader_train.sharding.jax,
+            )
+
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
         data_loader_validate = data_loader_validate.iter(
             block_size=model.config.block_size
@@ -374,18 +383,23 @@ class Trainer:
                         f"Loss train: {loss_train.item():.3f}, Loss val: {loss_val.item():.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}, tok/s: {sizeof_fmt(tps, system='decimal')}"
                     )
 
-                    if self.wandb_log:
-                        wandb.log(
-                            {
-                                "iter": n_iter,
-                                "loss-train": loss_train,
-                                "loss-val": loss_val,
-                                "lr": lr,
-                                "shard": batch.idx_shard,
-                                "mfu": mfu,
-                                "tok/s": tps,
-                            }
+                    log_info = {
+                        "n-iter": n_iter,
+                        "loss-train": loss_train,
+                        "loss-val": loss_val,
+                        "lr": lr,
+                        "shard": batch.idx_shard,
+                        "mfu": mfu,
+                        "tok/s": tps,
+                    }
+
+                    if self.eval_hellaswag:
+                        log_info["hellaswag_acc"] = evaluator.evaluate(
+                            model=model, data_loader=data_loader_hellaswag
                         )
+
+                    if self.wandb_log:
+                        wandb.log(log_info)
 
                 if n_iter % self.checkpoint_interval == 0:
                     metadata["n-iter"] = str(n_iter)

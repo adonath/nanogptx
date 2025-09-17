@@ -64,7 +64,7 @@ def load_hellaswag_examples(path, out_sharding=None):
 class ModelEvaluator:
     """Model evaluator"""
 
-    n_examples: int = 100
+    n_examples: int = 64
     print_results: bool = False
 
     @staticmethod
