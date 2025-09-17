@@ -21,7 +21,7 @@ EvaluationExample = namedtuple(
 )
 
 
-def tokenize_example(example):
+def tokenize_example(example, out_sharding=None):
     """Tokenize a single example"""
     enc = tiktoken.get_encoding("gpt2")
 
@@ -42,34 +42,58 @@ def tokenize_example(example):
         mask[i, : len(mask_row)] = np.asarray(mask_row)
 
     return EvaluationExample(
-        tokens=tokens,
-        mask=mask,
+        tokens=jax.device_put(tokens, out_sharding),
+        mask=jax.device_put(mask, out_sharding),
         label=int(example.label),
         ctx=example.ctx,
         endings=example.endings,
     )
 
 
-def load_hellaswag_examples(path):
+def load_hellaswag_examples(path, out_sharding=None):
     """Load examples from a parquet file"""
     import pandas as pd
 
     data = pd.read_parquet(path)
 
     for idx in range(len(data)):
-        yield tokenize_example(data.iloc[idx])
+        yield tokenize_example(data.iloc[idx], out_sharding=out_sharding)
 
 
 @dataclass
 class ModelEvaluator:
     """Model evaluator"""
 
-    n_examples: int = 1000
-    show_context: bool = False
+    n_examples: int = 100
+    print_results: bool = False
+
+    @staticmethod
+    def print_result(idx, example, num_correct, pred, avg_loss):
+        """Print results"""
+        title = f"Example {idx}"
+        title += "\n" + "-" * len(title)
+        print(title)
+        print("Eval:")
+        print(
+            f"\tAcc: {num_correct/idx:.4f} predicted: {pred}, actual: {example.label}".expandtabs(
+                TAB_WIDTH
+            )
+        )
+        print(f"Context:\n\t{example.ctx}".expandtabs(TAB_WIDTH))
+        print("Endings:")
+        for idx, end in enumerate(example.endings):
+            print(
+                f"\t{idx + 1} (loss: {avg_loss[idx].item():.4f}) {end}".expandtabs(
+                    TAB_WIDTH
+                )
+            )
+        print()
 
     def evaluate(self, model, data_loader):
+        """Evaluate hellaswag accuracy"""
         num_correct = 0
-        for _, example in zip(range(1, self.n_examples + 1), data_loader):
+
+        for idx, example in zip(range(1, self.n_examples + 1), data_loader):
             logits = model(
                 example.tokens,
                 rng_key=jax.random.key(9232),
@@ -84,28 +108,10 @@ class ModelEvaluator:
 
             num_correct += int(pred == example.label)
 
-            title = f"Example {_}"
-            title += "\n" + "-" * len(title)
-            print(title)
-            print("Eval:")
-            print(
-                f"\tAcc: {num_correct/_:.4f} predicted: {pred}, actual: {example.label}".expandtabs(
-                    TAB_WIDTH
-                )
-            )
+            if self.print_results:
+                self.print_result(idx, example, num_correct, pred, avg_loss)
 
-            # debug: pretty print a few examples, and the losses in each case
-            if self.show_context:
-                print(f"Context:\n\t{example.ctx}".expandtabs(TAB_WIDTH))
-                print("Endings:")
-                for idx, end in enumerate(example.endings):
-                    print(
-                        f"\t{idx + 1} (loss: {avg_loss[idx].item():.4f}) {end}".expandtabs(
-                            TAB_WIDTH
-                        )
-                    )
-
-            print()
+        return num_correct / self.n_examples
 
 
 if __name__ == "__main__":
@@ -117,4 +123,5 @@ if __name__ == "__main__":
 
     model = GPT.from_init(InitFromEnum.gpt2).init()
 
-    evaluator.evaluate(model=model, data_loader=hellaswag)
+    accuracy = evaluator.evaluate(model=model, data_loader=hellaswag)
+    print(f"Overall accuracy: {accuracy:.2f}")
