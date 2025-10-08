@@ -1,7 +1,7 @@
 # NanoGTPX: A "nanoGPT" Implementation in Pure JAX
 
 
-[![Build status](https://img.shields.io/github/actions/workflow/status/adonath/nanogptx/main.yml?branch=main)](https://github.com/adonath/nanogptx/actions/workflows/ci.yml?query=branch%3Amain)
+[![Build status](https://img.shields.io/github/actions/workflow/status/adonath/nanogptx/ci.yml?branch=main)](https://github.com/adonath/nanogptx/actions/workflows/ci.yml?query=branch%3Amain)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/adonath/nanogptx)](https://img.shields.io/github/commit-activity/m/adonath/nanogptx)
 [![License](https://img.shields.io/github/license/adonath/nanogptx)](https://img.shields.io/github/license/adonath/nanogptx)
 
