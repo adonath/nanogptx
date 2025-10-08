@@ -76,22 +76,17 @@ pixi run --environment gpu-profile train train-fineweb-10b --sharding.devices cu
 ```
 
 ⚠️ **Note**: the profiling requires `tensorflow` to be available in the same environment. This potentially leaves you with a different version of JAX,
-that is used for the profiling:
+that is used for the profiling.
 
+### Adding a new Config
+If you would like to add a new config, I would suggest to start from the `config/default.toml` file, which includes all available configuration options. Copy the file to a new name and edit as needed. As long as the file is in the `config/` folder it will be automatically discovered and validated.
 
 ### Adding a new Dataset
 If you would like to add a new dataset follow these steps:
 
 - Add a new entry to the `DatasetEnum` in `src/utils.py` with a short identifier of your dataset
-- Add the download urls in `src/download.py`, decompressing / unzip / untar should also happen at this step
-- Add a custom read function in `src/prepare.py` as needed.
-
-### Adding a new Model
-TODO:
-
-### Adding a new Config
-TODO:
-
+- Add the download urls in the registry in `src/download.py`, decompressing / unzip / untar should also happen at this step
+- Add a custom read function in `src/prepare.py` as needed and add it to the registry
 
 ## Acknowledgements
 
