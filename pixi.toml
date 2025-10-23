@@ -80,12 +80,11 @@ tensorboard = ">=2.18.0,<3"
 xprof = "*"
 importlib-resources = ">=6.5.2, <7"
 
-
 [environments]
 prepare = ["io"]
-cpu = ["cpu", "train"]
+cpu = ["cpu", "train", "io"] # io to load hellaswag examples
 cpu-profile = ["cpu", "train", "profile"]
-gpu = ["gpu", "train"]
+gpu = ["gpu", "train", "io"]
 gpu-profile = ["gpu", "train", "profile"]
 gpu-mps = ["gpu-mps",  "train"]
 all-cpu = ["notebook", "cpu", "io", "train"]
