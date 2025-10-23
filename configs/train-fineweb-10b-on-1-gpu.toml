@@ -22,7 +22,7 @@ total_batch_size = 524288
 
 [training.optimizer]
 learning_rate = 0.0006
-max_iters = 18865
+max_iters = 75460
 weight_decay = 0.1
 beta1 = 0.9
 beta2 = 0.95
