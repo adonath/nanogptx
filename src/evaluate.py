@@ -75,7 +75,7 @@ class ModelEvaluator:
         print(title)
         print("Eval:")
         print(
-            f"\tAcc: {num_correct/idx:.4f} predicted: {pred}, actual: {example.label}".expandtabs(
+            f"\tAcc: {num_correct / idx:.4f} predicted: {pred}, actual: {example.label}".expandtabs(
                 TAB_WIDTH
             )
         )

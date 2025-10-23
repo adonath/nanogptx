@@ -333,7 +333,7 @@ class Trainer:
             evaluator = ModelEvaluator()
             data_loader_hellaswag = load_hellaswag_examples(
                 path=PATH_DATA / "download/hellaswag/validation-00000-of-00001.parquet",
-                out_sharding=data_loader_train.sharding.jax,
+                out_sharding=data_loader_train.sharding.devices[0],
             )
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
