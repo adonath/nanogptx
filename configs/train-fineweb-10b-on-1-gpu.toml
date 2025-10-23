@@ -29,11 +29,11 @@ beta2 = 0.95
 grad_clip = 1.0
 decay_lr = true
 warmup_iters = 700
-lr_decay_iters = 18865
+lr_decay_iters = 75460
 min_lr = 6e-05
 
 [loading]
-batch_size = 512 # (n_devices * micro_batch_size) (8 * 64)
+batch_size = 128 # (n_devices * micro_batch_size) (8 * 64)
 verify = true
 seed = 8273
 dtype = "int32"
