@@ -331,9 +331,10 @@ class Trainer:
 
         if self.eval_hellaswag:
             evaluator = ModelEvaluator()
+            eval_sharding = data_loader_train.sharding.devices_jax[0]
             data_loader_hellaswag = load_hellaswag_examples(
                 path=PATH_DATA / "download/hellaswag/validation-00000-of-00001.parquet",
-                out_sharding=data_loader_train.sharding.devices[0],
+                out_sharding=eval_sharding,
             )
 
         data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
@@ -365,13 +366,8 @@ class Trainer:
                 dt = time.perf_counter() - time_start
 
                 # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
-                mfu = (
-                    3
-                    * self.optimizer.gradient_accumulation_steps
-                    * flops.per_iter
-                    / FLOPS_UNIT
-                    / dt
-                )
+                gas = self.optimizer.gradient_accumulation_steps
+                mfu = 3 * gas * flops.per_iter / FLOPS_UNIT / dt
                 tps = flops.tokens_per_iter / dt
 
                 if n_iter % self.eval_interval == 0:
@@ -394,8 +390,9 @@ class Trainer:
                     }
 
                     if self.eval_hellaswag:
-                        log_info["hellaswag_acc"] = evaluator.evaluate(
-                            model=model, data_loader=data_loader_hellaswag
+                        model_single_device = jax.device_put(model, eval_sharding)
+                        log_info["hellaswag-acc"] = evaluator.evaluate(
+                            model=model_single_device, data_loader=data_loader_hellaswag
                         )
 
                     if self.wandb_log:
