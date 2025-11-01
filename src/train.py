@@ -355,10 +355,9 @@ class Trainer:
                     pbar.update(1)
                     continue
 
-                time_start = time.perf_counter()
-
                 sub_rng_key = jax.random.fold_in(rng_key, n_iter)
 
+                time_start = time.perf_counter()
                 model, opt_state, loss_train = train_step(model, opt_state, batch, sub_rng_key)
 
                 if n_iter % self.eval_interval == 0:
