@@ -359,18 +359,17 @@ class Trainer:
 
                 sub_rng_key = jax.random.fold_in(rng_key, n_iter)
 
-                model, opt_state, loss_train = jax.block_until_ready(
-                    train_step(model, opt_state, batch, sub_rng_key)
-                )
-
-                dt = time.perf_counter() - time_start
-
-                # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
-                gas = self.optimizer.gradient_accumulation_steps
-                mfu = 3 * gas * flops.per_iter / FLOPS_UNIT / dt
-                tps = flops.tokens_per_iter / dt
+                model, opt_state, loss_train = train_step(model, opt_state, batch, sub_rng_key)
 
                 if n_iter % self.eval_interval == 0:
+                    loss_train = jax.block_until_ready(loss_train)
+                    dt = time.perf_counter() - time_start
+
+                    # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
+                    gas = self.optimizer.gradient_accumulation_steps
+                    mfu = 3 * gas * flops.per_iter / FLOPS_UNIT / dt
+                    tps = flops.tokens_per_iter / dt
+
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
                     )
