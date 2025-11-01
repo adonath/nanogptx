@@ -284,6 +284,7 @@ class Embedding:
         )
         return cls(weight=weight)
 
+    @jax.named_scope("Embedding")
     def __call__(self, x):
         return jnp.take(self.weight, x, axis=EmbeddingAxis.vocab)
 
@@ -317,6 +318,7 @@ class LayerNorm:
         bias = bias if use_bias else None
         return cls(weight=weight, bias=bias)
 
+    @jax.named_scope("LayerNorm")
     def __call__(self, x):
         mean = jnp.mean(x, axis=Axis.feature, keepdims=True)
         var = jnp.var(x, axis=Axis.feature, keepdims=True)
@@ -336,6 +338,7 @@ class Dropout:
 
     rate: float = field(default=0.1, metadata=dict(static=True))
 
+    @jax.named_scope("Dropout")
     def __call__(self, x, rng_key, is_training):
         if is_training:
             # taken from https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/_dropout.py#L95C13-L97C45
@@ -354,6 +357,7 @@ class Gelu:
     approximate: bool = field(default=True, metadata=dict(static=True))
 
     @jax.checkpoint
+    @jax.named_scope("Gelu")
     def __call__(self, x):
         return jax.nn.gelu(x, approximate=self.approximate)
 
@@ -399,6 +403,7 @@ class Linear:
         bias = bias if use_bias else None
         return cls(weight=weight, bias=bias)
 
+    @jax.named_scope("Linear")
     def __call__(self, x):
         x = jnp.matmul(x, self.weight.mT)
 
@@ -442,6 +447,7 @@ class MLP:
             c_fc=c_fc, gelu=Gelu(), c_proj=c_proj, dropout=Dropout(config.dropout_rate)
         )
 
+    @jax.named_scope("MLP")
     def __call__(self, x, rng_key, is_training) -> jax.Array:
         x = self.c_fc(x)
         x = self.gelu(x)
@@ -486,6 +492,7 @@ class CausalSelfAttention:
             resid_dropout=Dropout(config.dropout_rate),
         )
 
+    @jax.named_scope("CausalSelfAttention")
     def __call__(self, x, rng_key, is_training):
         query, key, value = jnp.split(self.c_attn(x), 3, axis=Axis.feature)
 
@@ -537,6 +544,7 @@ class Block:
             mlp=MLP.from_config(config),
         )
 
+    @jax.named_scope("Block")
     def __call__(self, x, rng_key, is_training) -> jax.Array:
         x = x + self.attn(self.ln_1(x), rng_key=rng_key, is_training=is_training)
         x = x + self.mlp(self.ln_2(x), rng_key=rng_key, is_training=is_training)
@@ -573,7 +581,9 @@ class GPT:
         """Weight shared lm head"""
         return Linear(weight=self.wte.weight, bias=None)
 
+
     @partial(jax.jit, static_argnames=("is_training", "inference"))
+    @jax.named_scope("GPT")
     def __call__(self, idx, rng_key, is_training, inference=False):
         pos = jnp.arange(idx.shape[Axis.sequence])
 
