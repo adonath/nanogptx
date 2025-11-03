@@ -47,7 +47,8 @@ optax = ">=0.2.5,<0.3"
 jax = ">=0.5.0,<0.7"
 
 [feature.cpu.activation.env]
-XLA_FLAGS = '--xla_force_host_platform_device_count=8' # useful for development of shardecd code
+XLA_FLAGS = "--xla_force_host_platform_device_count=8" # useful for development of shardecd code
+
 
 [feature.gpu.system-requirements]
 cuda = "12"
@@ -72,13 +73,23 @@ ENABLE_PJRT_COMPATIBILITY="1"
 [feature.notebook.dependencies]
 notebook = ">=7.1.4,<8"
 
-[feature.profile.dependencies]
-tensorflow = "==2.18.0"
-tensorboard = ">=2.18.0,<3"
 
 [feature.profile.pypi-dependencies]
+xprof = ">=2.20.9, <3"
+
+[feature.profile.activation.env]
+XLA_FLAGS = "—xla_gpu_enable_command_buffer=''" # disables cuda graphs to see Python scopes
+
+
+
+[feature.tensorboard.pypi-dependencies]
 xprof = "*"
-importlib-resources = ">=6.5.2, <7"
+tensorboard-plugin-profile = ">=2.20.0, <3"
+tensorflow = ">=2.20.0, <3"
+
+[feature.tensorboard.dependencies]
+python = "3.12.*"
+
 
 [environments]
 prepare = ["io"]
@@ -88,3 +99,4 @@ gpu = ["gpu", "train", "io"]
 gpu-profile = ["gpu", "train", "profile"]
 gpu-mps = ["gpu-mps",  "train"]
 all-cpu = ["notebook", "cpu", "io", "train"]
+tensorboard = ["tensorboard"]

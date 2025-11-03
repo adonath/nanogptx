@@ -377,7 +377,6 @@ class Trainer:
                     loss_train = jax.block_until_ready(loss_train)
                     jax.profiler.stop_trace()
                     log.info(f"Stop profiling")
-                    record_trace = False
 
                 if n_iter % self.eval_interval == 0:
                     loss_train = jax.block_until_ready(loss_train)
