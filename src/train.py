@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import profile
 import time
 from collections import namedtuple
 from contextlib import nullcontext
@@ -258,6 +259,14 @@ class DatasetLoader:
                     idx_batches=idx_batches,
                 )
 
+@dataclass
+class ProfileConfig:
+    """Profiling configuration"""
+    record_trace: bool = False  # Whether ro record a profile trace
+    path: Path = PATH_BASE / ".profile"  # Where to save the trace
+    warm_up: int = 5  # Number of warm up iterations 
+    n_iters: int = 2  # Number of iterations to capture
+
 
 @tree_util.register_dataclass
 @dataclass
@@ -265,6 +274,7 @@ class Trainer:
     """Training configuration"""
 
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    profile: ProfileConfig = field(default_factory=ProfileConfig)
     log_interval: int = 1
     eval_interval: int = 2000
     eval_iters: int = 3
@@ -344,6 +354,7 @@ class Trainer:
 
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
+        record_trace = self.profile.record_trace
 
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
@@ -351,6 +362,10 @@ class Trainer:
             for n_iter, batch in zip(
                 range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
+                if record_trace and n_iter > self.profile.warm_up:
+                    jax.profiler.start_trace(self.profile.path)
+                    log.info(f"Starting profiler, recording to {self.profile.path}")
+
                 if n_iter <= resume_from:
                     pbar.update(1)
                     continue
@@ -359,6 +374,12 @@ class Trainer:
 
                 time_start = time.perf_counter()
                 model, opt_state, loss_train = train_step(model, opt_state, batch, sub_rng_key)
+
+                if record_trace and n_iter > (self.profile.warm_up + self.profile.n_iters):
+                    loss_train = jax.block_until_ready(loss_train)
+                    jax.profiler.stop_trace()
+                    log.info(f"Stop profiling")
+                    record_trace = False
 
                 if n_iter % self.eval_interval == 0:
                     loss_train = jax.block_until_ready(loss_train)
@@ -422,7 +443,6 @@ class Config:
     loading: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
-    profile: bool = False
     _key = None
 
     def __post_init__(self):
@@ -560,22 +580,14 @@ if __name__ == "__main__":
 
     log.info(f"{model.info()}")
 
-    if config.profile:
-        path = f".profile/{config.logging.wandb_run_name}"
-        log.info(f"Profiling to {path}")
-        context = jax.profiler.trace(path)
-    else:
-        context = nullcontext()
-
-    with context:
-        model = config.training.train(
-            model=model,
-            data_loader_train=data_loader_train,
-            data_loader_validate=data_loader_validate,
-            rng_key=config.rng_key,
-            metadata=metadata,
-            resume_from=resume_from,
-        )
+    model = config.training.train(
+        model=model,
+        data_loader_train=data_loader_train,
+        data_loader_validate=data_loader_validate,
+        rng_key=config.rng_key,
+        metadata=metadata,
+        resume_from=resume_from,
+    )
 
     filename = (
         PATH_DATA
