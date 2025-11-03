@@ -282,7 +282,7 @@ class Trainer:
     wandb_log: bool = False
     total_batch_size: int = 256  # total batch size in units of tokens
     checkpoint_path: Path = PATH_DATA / "checkpoints"
-    filename_pattern: str = "checkpoint-{n_iter}.safetensors"
+    filename_pattern: str = "model-n-iter-{n_iter}.safetensors"
 
     def train(
         self,
@@ -360,8 +360,9 @@ class Trainer:
                 range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
                 if self.profile.record_trace and n_iter == self.profile.warm_up:
-                    jax.profiler.start_trace(self.profile.path,  profiler_options=PROFILER_OPTIONS)
-                    log.info(f"Starting profiler, recording to {self.profile.path}")
+                    path = self.profile.path / metadata['logging.wandb_run_name']
+                    jax.profiler.start_trace(path,  profiler_options=PROFILER_OPTIONS)
+                    log.info(f"Starting profiler, recording to {path}")
 
                 if n_iter <= resume_from:
                     pbar.update(1)
@@ -452,7 +453,7 @@ class Config:
         self.training.checkpoint_path = (
             PATH_DATA / "checkpoints" / self.logging.wandb_run_name
         )
-        self.training.filename_pattern = "model-n-iter-{n_iter}.safetensors"
+
 
     @property
     def rng_key(self) -> jax.Array:
