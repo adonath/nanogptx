@@ -84,7 +84,6 @@ class EmbeddingAxis(int, Enum):
     embd = 1
 
 
-@register_dataclass
 @dataclass
 class GPTConfig:
     """Model configuration"""

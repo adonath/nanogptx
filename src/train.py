@@ -70,7 +70,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 # fmt: off
-@tree_util.register_dataclass
 @dataclass
 class WAndBConfig:
     """WAndB logging"""
@@ -81,7 +80,6 @@ class WAndBConfig:
     wandb_tags: list[str] = field(default_factory=list)
 
 
-@tree_util.register_dataclass
 @dataclass
 class OptimizerConfig:
     """Optimizer configuration"""
@@ -136,7 +134,6 @@ Batch = namedtuple(
 )
 
 
-@tree_util.register_dataclass
 @dataclass(frozen=True)
 class DatasetIndex:
     """Dataset index"""
@@ -195,7 +192,6 @@ class DatasetIndex:
         return [{**_, **{"name": self.path / _["name"]}} for _ in self.filenames]
 
 
-@tree_util.register_dataclass
 @dataclass
 class DatasetLoader:
     """Dataset loading"""
@@ -268,7 +264,6 @@ class ProfileConfig:
     n_iters: int = 2  # Number of iterations to capture
 
 
-@tree_util.register_dataclass
 @dataclass
 class Trainer:
     """Training configuration"""
@@ -354,7 +349,6 @@ class Trainer:
 
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
-        record_trace = self.profile.record_trace
 
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
@@ -362,7 +356,7 @@ class Trainer:
             for n_iter, batch in zip(
                 range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
-                if record_trace and n_iter > self.profile.warm_up:
+                if self.profile.record_trace and n_iter == self.profile.warm_up:
                     jax.profiler.start_trace(self.profile.path)
                     log.info(f"Starting profiler, recording to {self.profile.path}")
 
@@ -375,7 +369,7 @@ class Trainer:
                 time_start = time.perf_counter()
                 model, opt_state, loss_train = train_step(model, opt_state, batch, sub_rng_key)
 
-                if record_trace and n_iter > (self.profile.warm_up + self.profile.n_iters):
+                if self.profile.record_trace and n_iter == (self.profile.warm_up + self.profile.n_iters):
                     loss_train = jax.block_until_ready(loss_train)
                     jax.profiler.stop_trace()
                     log.info(f"Stop profiling")
@@ -430,7 +424,6 @@ class Trainer:
         return model
 
 
-@tree_util.register_dataclass
 @dataclass
 class Config:
     """General config"""
