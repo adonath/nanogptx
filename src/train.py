@@ -64,6 +64,9 @@ DACITE_CAST = [
     Path,
 ]
 DACITE_CONFIG = DaciteConfig(cast=DACITE_CAST, strict=True)
+PROFILER_OPTIONS = jax.profiler.ProfileOptions()
+#PROFILER_OPTIONS.python_tracer_level = 0
+#PROFILER_OPTIONS.host_tracer_level = 0
 
 log = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -357,7 +360,7 @@ class Trainer:
                 range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
                 if self.profile.record_trace and n_iter == self.profile.warm_up:
-                    jax.profiler.start_trace(self.profile.path)
+                    jax.profiler.start_trace(self.profile.path,  profiler_options=PROFILER_OPTIONS)
                     log.info(f"Starting profiler, recording to {self.profile.path}")
 
                 if n_iter <= resume_from:
