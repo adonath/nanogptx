@@ -247,9 +247,9 @@ class DatasetLoader:
             for idx in range(len(data) // self.batch_size // block_size):
                 max_val = len(data) - block_size
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
-
-                x = jnp.stack([data[i : i + block_size] for i in idx_batches])
-                y = jnp.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
+                
+                x = np.stack([data[i : i + block_size] for i in idx_batches])
+                y = np.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
                 yield Batch(
                     x=jax.device_put(x, self.sharding.jax),
                     y=jax.device_put(y, self.sharding.jax),
@@ -376,7 +376,7 @@ class Trainer:
                 if self.profile.record_trace and n_iter == (self.profile.warm_up + self.profile.n_iters):
                     loss_train = jax.block_until_ready(loss_train)
                     jax.profiler.stop_trace()
-                    log.info(f"Stop profiling")
+                    log.info("Stop profiling")
 
                 if n_iter % self.eval_interval == 0:
                     loss_train = jax.block_until_ready(loss_train)
