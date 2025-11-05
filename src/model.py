@@ -206,6 +206,9 @@ class ArrayInfo:
 
     def to_value(self, rng_key, dtype=None, out_sharding=None):
         """Initialize to value"""
+        if self.init is None:
+            return None
+        
         result = self.init(
             key=rng_key,
             shape=self.shape,
@@ -233,8 +236,6 @@ def init_array_leaves(rng_key, dtype=None, out_sharding=None):
         nonlocal rng_key
 
         if isinstance(leave, ArrayInfo):
-            if leave.init is None:
-                return None
             rng_key, subkey = jax.random.split(rng_key)
             return leave.to_value(subkey, dtype=dtype, out_sharding=out_sharding)
 
