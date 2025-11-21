@@ -208,7 +208,7 @@ class ArrayInfo:
         """Initialize to value"""
         if self.init is None:
             return None
-        
+
         result = self.init(
             key=rng_key,
             shape=self.shape,
@@ -562,7 +562,7 @@ class GPTInfo:
     n_bytes: int
 
     def __str__(self):
-        return f"GPT Model: {sizeof_fmt(self.n_parameters, system="decimal")} parameters | {sizeof_fmt(self.n_bytes)}"
+        return f"GPT Model: {sizeof_fmt(self.n_parameters, system='decimal')} parameters | {sizeof_fmt(self.n_bytes)}"
 
 
 @register_dataclass
@@ -581,14 +581,11 @@ class GPT:
         """Weight shared lm head"""
         return Linear(weight=self.wte.weight, bias=None)
 
-
     @partial(jax.jit, static_argnames=("is_training", "inference"))
     @jax.named_scope("GPT")
     def __call__(self, idx, rng_key, is_training, inference=False):
-        pos = jnp.arange(idx.shape[Axis.sequence])
-
         tok_emb = self.wte(idx)
-        pos_emb = self.wpe(pos)
+        pos_emb = self.wpe.weight
 
         rng_key, sub_rng_key = jax.random.split(rng_key)
         x = self.drop(tok_emb + pos_emb, rng_key=sub_rng_key, is_training=is_training)
