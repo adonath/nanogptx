@@ -42,7 +42,7 @@ To train a GPT2 124m model on the Fineweb10b dataset on two GPUs you can use for
 ```bash
 pixi run download --dataset fineweb_10b
 pixi run --environment prepare prepare --dataset fineweb_10b
-pixi run --environment gpu train train-fineweb-10b --sharding.devices cuda:0,cuda:1 --loading.sharding.devices cuda:0,cuda:1
+pixi run --environment gpu train train-fineweb-10b-on-8-gpus
 pixi run --envrionment gpu sample --init-from resume --sampler.max-new-tokens 500 --sampler.num-samples 5
 ```
 `nanogptx` supports a simple SPMD (single program multiple data) distribution strategy, meaning groups of batches are evaluated in parallel on the configured devices.
@@ -71,8 +71,8 @@ There is a dedicated option and environment for profiling available. The approch
 An you can enable it using:
 
 ```bash
-pixi run --environment cpu train train-shakespeare-char --training.profile.record
-pixi run --environment gpu train train-fineweb-10b-8-gpus --training.profile.record
+pixi run --environment cpu train train-shakespeare-char --training.profile.record-trace
+pixi run --environment gpu train train-fineweb-10b-on-8-gpus --training.profile.record-trace
 ```
 
 The profiles will be stored in `.profile/<run name>/` and can be opened using e.g. `xprof`:
@@ -94,4 +94,4 @@ If you would like to add a new dataset follow these steps:
 
 ## Acknowledgements
 
-Thanks to [@fcrespo82](https://github.com/fcrespo82) for the names list from the [Ubuntu Name generator](https://ubuntu-name-generator.crespo.com.br).
+Thanks to [@fcrespo82](https://github.com/fcrespo82) for the names list from the [Ubuntu Name generator](https://ubuntu-name-generator.crespo.com.br). Thanks to [@rdyro](https://github.com/rdyro/) for the help on initial performance issues.
