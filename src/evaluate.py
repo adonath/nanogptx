@@ -83,7 +83,7 @@ class ModelEvaluator:
         print("Endings:")
         for idx, end in enumerate(example.endings):
             print(
-                f"\t{idx + 1} (loss: {avg_loss[idx].item():.4f}) {end}".expandtabs(
+                f"\t{idx} (loss: {avg_loss[idx].item():.4f}) {end}".expandtabs(
                     TAB_WIDTH
                 )
             )
