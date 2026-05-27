@@ -156,13 +156,13 @@ def initialize_ones(key, shape, dtype, out_sharding):
 
 
 def initialize_zeros(key, shape, dtype, out_sharding):
-    """Initialize ones"""
+    """Initialize zeros"""
     return jnp.zeros(shape=shape, dtype=dtype, device=out_sharding)
 
 
 @dataclass
-class initialize_from_safetensors:
-    """Init from safetensors file"""
+class InitializeFromSafetensors:
+    """Initializer that loads a tensor from a safetensors file"""
 
     filename: str
     name: str
@@ -222,7 +222,7 @@ class ArrayInfo:
     @classmethod
     def from_safetensors(cls, filename, name, meta):
         """Create array info object from safetensor file"""
-        init = initialize_from_safetensors(
+        init = InitializeFromSafetensors(
             filename=filename,
             name=name,
         )
@@ -267,7 +267,8 @@ class Embedding:
         vocab_size = x.shape[EmbeddingAxis.vocab]
         new_vocab_size = ((vocab_size + multiple - 1) // multiple) * multiple
         padding = new_vocab_size - vocab_size
-        width, width[EmbeddingAxis.vocab] = [(0, 0)] * x.ndim, (0, padding)
+        width = [(0, 0)] * x.ndim
+        width[EmbeddingAxis.vocab] = (0, padding)
         return jnp.pad(x, width, constant_values=value, mode="constant")
 
     @classmethod
@@ -373,12 +374,12 @@ class Linear:
     @property
     def n_in(self):
         """Number of input features"""
-        return self.weight.shape[Axis.feature]
+        return self.weight.shape[1]
 
     @property
     def n_out(self):
         """Number of output features"""
-        return self.weight.shape[Axis.sequence]
+        return self.weight.shape[0]
 
     @classmethod
     def from_n_features(
@@ -452,8 +453,6 @@ class MLP:
         x = self.c_fc(x)
         x = self.gelu(x)
         x = self.c_proj(x)
-
-        rng_key, _ = jax.random.split(rng_key)
         x = self.dropout(x, rng_key=rng_key, is_training=is_training)
         return x
 
@@ -465,7 +464,6 @@ class CausalSelfAttention:
 
     c_attn: Linear
     c_proj: Linear
-    attn_dropout: Dropout
     resid_dropout: Dropout
     n_head: int = field(metadata=dict(static=True))
 
@@ -488,7 +486,6 @@ class CausalSelfAttention:
                 **kwargs,
             ),
             n_head=config.n_head,
-            attn_dropout=Dropout(config.dropout_rate),
             resid_dropout=Dropout(config.dropout_rate),
         )
 
@@ -546,8 +543,9 @@ class Block:
 
     @jax.named_scope("Block")
     def __call__(self, x, rng_key, is_training) -> jax.Array:
-        x = x + self.attn(self.ln_1(x), rng_key=rng_key, is_training=is_training)
-        x = x + self.mlp(self.ln_2(x), rng_key=rng_key, is_training=is_training)
+        key_attn, key_mlp = jax.random.split(rng_key)
+        x = x + self.attn(self.ln_1(x), rng_key=key_attn, is_training=is_training)
+        x = x + self.mlp(self.ln_2(x), rng_key=key_mlp, is_training=is_training)
         return x
 
 
@@ -585,7 +583,7 @@ class GPT:
     @jax.named_scope("GPT")
     def __call__(self, idx, rng_key, is_training, inference=False):
         tok_emb = self.wte(idx)
-        pos_emb = self.wpe.weight
+        pos_emb = self.wpe.weight[: idx.shape[Axis.sequence], :]
 
         rng_key, sub_rng_key = jax.random.split(rng_key)
         x = self.drop(tok_emb + pos_emb, rng_key=sub_rng_key, is_training=is_training)
@@ -730,7 +728,7 @@ class GPT:
     @classmethod
     def read(cls, path, transpose_weights=True, **kwargs) -> GPT:
         """Read model from safetensors file"""
-        log.info(f"Reading model from {path}")
+        log.info("Reading model from %s", path)
 
         header = read_safetensors_header(path)
         metadata = header.pop("__metadata__")
@@ -775,7 +773,7 @@ class GPT:
             metadata = flatten_pytree_with_path(self.config, parse_type=str)
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        log.info(f"Writing model to {path}")
+        log.info("Writing model to %s", path)
         save_file(data, path, metadata=metadata)
 
 
@@ -783,7 +781,9 @@ def abstract_call(model, x, is_training=True):
     """Call model evaluating shapes, dtypes and shardings"""
 
     def info_to_struct(info):
-        return jax.ShapeDtypeStruct(info.shape, info.dtype, sharding=info.out_sharding)
+        return jax.ShapeDtypeStruct(
+            info.shape, info.dtype.jax, sharding=info.out_sharding.jax
+        )
 
     model = jax.tree.map(
         info_to_struct, model, is_leaf=lambda _: isinstance(_, ArrayInfo)
