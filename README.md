@@ -1,4 +1,4 @@
-# NanoGTPX: A "nanoGPT" Implementation in Pure JAX
+# NanoGPTX: A "nanoGPT" Implementation in Pure JAX
 
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/adonath/nanogptx/ci.yml?branch=main)](https://github.com/adonath/nanogptx/actions/workflows/ci.yml?query=branch%3Amain)
