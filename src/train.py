@@ -369,6 +369,12 @@ class Trainer:
         if resume_from > 0:
             opt_state = self.optimizer.replay_state(opt_state, resume_from)
 
+        # `dt` accumulates wall time across the eval window so the average step
+        # time is measured over many dispatches, not the single async dispatch
+        # of the current step.
+        time_start = time.perf_counter()
+        n_iter_last_eval = max(resume_from, 0)
+
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
         ) as pbar:
@@ -385,8 +391,6 @@ class Trainer:
                     continue
 
                 sub_rng_key = jax.random.fold_in(rng_key, n_iter)
-
-                time_start = time.perf_counter()
                 model, opt_state, loss_train = train_step(model, opt_state, batch, sub_rng_key)
 
                 if self.profile.record_trace and n_iter == (self.profile.warm_up + self.profile.n_iters):
@@ -397,11 +401,11 @@ class Trainer:
                 if n_iter % self.eval_interval == 0:
                     loss_train = jax.block_until_ready(loss_train)
                     dt = time.perf_counter() - time_start
+                    step_time = dt / (n_iter - n_iter_last_eval)
 
-                    # TODO: compute the actual flops from train_step, for now just use 1/2 for fwd / bkw ratio
-                    gas = self.optimizer.gradient_accumulation_steps
-                    mfu = 3 * gas * flops.per_iter / FLOPS_UNIT / dt
-                    tps = flops.tokens_per_iter / dt
+                    # train_step does one fwd+bwd; PaLM-style 3x ratio.
+                    mfu = 3 * flops.per_iter / FLOPS_UNIT / step_time
+                    tps = flops.tokens_per_iter / step_time
 
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
@@ -429,6 +433,9 @@ class Trainer:
 
                     if self.wandb_log:
                         wandb.log(log_info)
+
+                    time_start = time.perf_counter()
+                    n_iter_last_eval = n_iter
 
                 if n_iter % self.checkpoint_interval == 0:
                     metadata["n-iter"] = str(n_iter)
