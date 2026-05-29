@@ -14,12 +14,9 @@ import tyro
 from safetensors.numpy import safe_open, save_file
 from tqdm import tqdm
 
-from utils import DatasetEnum, EncodingEnum, get_checksum
+from utils import PATH_DATA, DatasetEnum, EncodingEnum, get_checksum
 
-log = logging.getLogger(__file__)
-logging.basicConfig(level=logging.INFO)
-
-PATH_DATA = Path(__file__).parent.parent / "data"
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,7 +29,7 @@ class CharEncoding:
 
     @property
     def n_vocab(self):
-        """Voca size"""
+        """Vocab size"""
         return len(self.stoi)
 
     @property
@@ -42,9 +39,7 @@ class CharEncoding:
     @classmethod
     def from_text(cls, text):
         """Generate encoding from text"""
-        chars = sorted(set(text)) + [
-            "\n\n",
-        ]  # Add <and of text> character
+        chars = sorted(set(text)) + ["\n\n"]  # Add <end of text> character
         stoi = {ch: i for i, ch in enumerate(chars)}
         itos = {i: ch for i, ch in enumerate(chars)}
         return cls(stoi=stoi, itos=itos)
@@ -68,7 +63,7 @@ class CharEncoding:
         return "".join([self.itos[_] for _ in tokens])
 
 
-def prepocess(document: str):
+def preprocess(document: str):
     """Preprocess sequence"""
     return re.sub("\n\n\n+", "\n\n", document).strip()
 
@@ -79,12 +74,12 @@ def tokenize(encoding, document) -> list[np.ndarray]:
 
     tokens = [eot]  # the special <|endoftext|> token delimits all documents
     tokens.extend(encoding.encode_ordinary(document))
-    return np.array(tokens).astype(DTYPES[encoding.name])
+    return np.array(tokens, dtype=DTYPES[encoding.name])
 
 
 def read_txt_shakespeare(filename) -> list[str]:
     """Read filename"""
-    log.info(f"Reading {filename}")
+    log.info("Reading %s", filename)
 
     with open(filename, "r", encoding="utf-8") as f:
         data = f.read()
@@ -109,7 +104,7 @@ def read_jsonl_pile_uncopyrighted(json_filename) -> list[str]:
     """Read JSON line format"""
 
     def extract_text(line):
-        """Extract text from a single linee JSON file"""
+        """Extract text from a single-line JSON record"""
         return json.loads(line)["text"]
 
     with json_filename.open("r") as json_file:
@@ -138,7 +133,7 @@ def read_parquet(filename) -> list[str]:
 
 def write_safetensors(tokens, filename, encoding, filename_input):
     """Write safetensors file"""
-    log.info(f"Writing {filename}")
+    log.info("Writing %s", filename)
 
     metadata = {
         "n-tokens": str(len(tokens)),
@@ -186,7 +181,8 @@ def write_summary(path, shards_val_idxs):
 
     for filename in sorted(Path(path).glob("*.safetensors")):
         idx = int(filename.stem.split("_")[-1])
-        (shards_train, shards_val)[idx in shards_val_idxs].append(filename)
+        target = shards_val if idx in shards_val_idxs else shards_train
+        target.append(filename)
 
     data = generate_summary(shards_train, suffix="train")
     data.update(generate_summary(shards_val, suffix="val"))
@@ -194,18 +190,18 @@ def write_summary(path, shards_val_idxs):
     filename_json = path / "summary-stats.json"
 
     with filename_json.open("w") as json_file:
-        log.info(f"Writing {filename_json}")
+        log.info("Writing %s", filename_json)
         json.dump(data, json_file, indent=4)
 
 
 def apply(pipeline, filename):
     """Apply pipeline steps in series"""
-    log = get_logger()
+    mp_log = get_logger()
 
     def step(x, args):
         name, f = args
         if isinstance(x, Path):
-            log.info(f"Reading {x}")
+            mp_log.info("Reading %s", x)
             return f(x)
 
         return list(map(f, tqdm(x, desc=f"{name.title()} {filename.name}", position=1)))
@@ -236,8 +232,8 @@ DTYPES = {EncodingEnum.gpt2: np.uint16, EncodingEnum.char: np.uint16}
 class DataPreparationConfig:
     """Data preparation config"""
 
-    shard_size: int = int(1e8)  # Size of each data shard in the output files, in tokens
-    shards_val: tuple[int] = (0,)  # Which shards to use for validation
+    shard_size: int = 100_000_000  # Size of each data shard, in tokens
+    shards_val: tuple[int, ...] = (0,)  # Which shards to use for validation
     encoding: EncodingEnum = EncodingEnum.gpt2
     dataset: DatasetEnum = DatasetEnum.shakespeare
     n_process: int = max(1, cpu_count() - 2)
@@ -252,13 +248,13 @@ def prepare(config):
 
     steps = {
         "read": READ_METHODS[config.dataset],
-        "preprocess": prepocess,
+        "preprocess": preprocess,
         "tokenize": partial(tokenize, encoding),
     }
 
     filenames = list((PATH_DATA / f"download/{config.dataset}").glob("*.*"))
 
-    log.info(f"Found {len(filenames)} files to process.")
+    log.info("Found %d files to process.", len(filenames))
     path = PATH_DATA / "train" / f"{config.dataset}-{config.encoding}"
     path.mkdir(parents=True, exist_ok=True)
 
@@ -274,13 +270,15 @@ def prepare(config):
     with tqdm(**kwargs) as pbar, Pool(config.n_process) as pool:
         n_shard, n_tokens_total = 0, 0
         tokens_shard = np.empty((config.shard_size,), dtype=DTYPES[config.encoding])
+        last_input = None
 
         for result, filename_input in zip(
             pool.imap(partial(apply, steps), filenames, chunksize=config.chunksize),
             filenames,
         ):
-            # each process returns a list of token sequences, where each toke sequence typically represents
-            # a document
+            last_input = filename_input
+            # each process returns a list of token sequences, where each token
+            # sequence typically represents a document
             for tokens in result:
                 pbar.set_description(f"Shard {n_shard}")
 
@@ -306,17 +304,18 @@ def prepare(config):
                 n_tokens_total = len(tokens) - remainder
                 tokens_shard[:n_tokens_total] = tokens[remainder:]
 
-            if n_tokens_total > 0:
-                filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
-                write_safetensors(
-                    tokens_shard[:n_tokens_total],
-                    filename=filename,
-                    encoding=encoding,
-                    filename_input=filename_input.name,
-                )
+        if n_tokens_total > 0 and last_input is not None:
+            filename = path / f"{config.dataset}_shard_{n_shard:06d}.safetensors"
+            write_safetensors(
+                tokens_shard[:n_tokens_total],
+                filename=filename,
+                encoding=encoding,
+                filename_input=last_input.name,
+            )
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     config = tyro.cli(DataPreparationConfig)
 
     if not config.write_summary_only:
