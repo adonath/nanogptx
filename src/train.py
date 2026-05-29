@@ -237,7 +237,7 @@ class DatasetLoader:
 
             with safe_open(filename, framework="numpy", device="cpu") as f:
                 # TODO: load straight to device for zero copy, see also https://github.com/huggingface/safetensors/issues/636
-                log.info(f"Reading {filename}")
+                log.info("Reading %s", filename)
                 data = f.get_tensor("tokens")
 
                 if self.verify and checksum != get_checksum(data):
@@ -296,7 +296,8 @@ class Trainer:
         """Train model"""
 
         log.info(
-            f"Using {self.optimizer.gradient_accumulation_steps} gradient accumulation steps."
+            "Using %d gradient accumulation steps.",
+            self.optimizer.gradient_accumulation_steps,
         )
 
         def loss_fn(model, batch, rng_key, is_training):
@@ -362,7 +363,7 @@ class Trainer:
                 if self.profile.record_trace and n_iter == self.profile.warm_up:
                     path = self.profile.path / metadata['logging.wandb_run_name']
                     jax.profiler.start_trace(path,  profiler_options=PROFILER_OPTIONS)
-                    log.info(f"Starting profiler, recording to {path}")
+                    log.info("Starting profiler, recording to %s", path)
 
                 if n_iter <= resume_from:
                     pbar.update(1)
@@ -476,7 +477,7 @@ class Config:
     def read(cls, path: str):
         """Read configuration from file"""
         path = Path(path)
-        log.info(f"Reading configuration from {path}")
+        log.info("Reading configuration from %s", path)
 
         if path.suffix == ".safetensors":
             with safe_open(path, framework="numpy") as f:
@@ -503,7 +504,7 @@ class Config:
 
     def write(self, path: str):
         """Write configuration to file"""
-        log.info(f"Writing configuration to {path}")
+        log.info("Writing configuration to %s", path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with path.open("wb") as f:
@@ -527,7 +528,7 @@ def get_configs():
                 Config.read(filename),
             )
         except (ValueError, UnexpectedDataError) as e:
-            log.warning(f"Error in file '{filename.name}', {e}")
+            log.warning("Error in file '%s', %s", filename.name, e)
 
     return configs
 
@@ -541,7 +542,7 @@ if __name__ == "__main__":
         latest = max(candidates, key=os.path.getctime)
 
         with safe_open(latest, framework="numpy") as f:
-            log.info(f"Reading metadata from {latest}")
+            log.info("Reading metadata from %s", latest)
             resume_from = int(f.metadata()["n-iter"])
             run_id = f.metadata().get("wandb-run-id")
 
@@ -559,22 +560,24 @@ if __name__ == "__main__":
         metadata["wandb-run-id"] = str(run.id)
 
     data_loader_train = config.loading
-    log.info(f"Training dataset has {data_loader_train.index.n_tokens_total} tokens.")
+    log.info(
+        "Training dataset has %d tokens.", data_loader_train.index.n_tokens_total
+    )
 
     data_loader_validate = config.loading_val
     log.info(
-        f"Validation dataset has {data_loader_validate.index.n_tokens_total} tokens."
+        "Validation dataset has %d tokens.", data_loader_validate.index.n_tokens_total
     )
 
-    log.info(f"Using devices {config.sharding.jax.device_set}")
-    log.info(f"Using `{DOT_PRODUCT_ATTENTION}` dot product implementation.")
+    log.info("Using devices %s", config.sharding.jax.device_set)
+    log.info("Using `%s` dot product implementation.", DOT_PRODUCT_ATTENTION)
 
     model = GPT.from_init(config.init_from, config.model)
 
     spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
     model = model.init(rng_key=config.rng_key, **spec)
 
-    log.info(f"{model.info()}")
+    log.info("%s", model.info())
 
     model = config.training.train(
         model=model,
