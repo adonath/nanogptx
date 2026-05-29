@@ -127,20 +127,30 @@ class OptimizerConfig:
             optax.apply_every(self.gradient_accumulation_steps),
         )
 
+    @staticmethod
+    def _inject_state_index(opt_state):
+        """Index of the inject_hyperparams state in the optimizer chain"""
+        for i, state in enumerate(opt_state):
+            if hasattr(state, "hyperparams"):
+                return i
+        raise ValueError("Optimizer chain has no inject_hyperparams state")
+
     def replay_state(self, opt_state, n_iter):
         """Advance the LR schedule to step n_iter without restoring Adam moments"""
         # Only the inject_hyperparams count drives the warmup/cosine schedule;
         # bumping it makes the schedule return the right LR after resume.
         # Adam's inner count and moments stay zero so bias correction is
         # well-defined while moments rebuild over the next few hundred steps.
-        clip_state, inject_state, apply_every_state = opt_state
-        return (
-            clip_state,
-            inject_state._replace(
-                count=jnp.asarray(n_iter, dtype=inject_state.count.dtype),
-            ),
-            apply_every_state,
+        i = self._inject_state_index(opt_state)
+        inject = opt_state[i]._replace(
+            count=jnp.asarray(n_iter, dtype=opt_state[i].count.dtype),
         )
+        return opt_state[:i] + (inject,) + opt_state[i + 1 :]
+
+    def current_lr(self, opt_state):
+        """Read the current learning rate from the inject_hyperparams state"""
+        i = self._inject_state_index(opt_state)
+        return float(opt_state[i].hyperparams["learning_rate"])
 # fmt: on
 
 
@@ -410,7 +420,7 @@ class Trainer:
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
                     )
-                    lr = float(opt_state[1].hyperparams["learning_rate"])
+                    lr = self.optimizer.current_lr(opt_state)
                     pbar.set_postfix_str(
                         f"Loss train: {loss_train.item():.3f}, Loss val: {loss_val.item():.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}, tok/s: {sizeof_fmt(tps, system='decimal')}"
                     )
