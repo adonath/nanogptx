@@ -126,6 +126,21 @@ class OptimizerConfig:
             adamw,
             optax.apply_every(self.gradient_accumulation_steps),
         )
+
+    def replay_state(self, opt_state, n_iter):
+        """Advance the LR schedule to step n_iter without restoring Adam moments"""
+        # Only the inject_hyperparams count drives the warmup/cosine schedule;
+        # bumping it makes the schedule return the right LR after resume.
+        # Adam's inner count and moments stay zero so bias correction is
+        # well-defined while moments rebuild over the next few hundred steps.
+        clip_state, inject_state, apply_every_state = opt_state
+        return (
+            clip_state,
+            inject_state._replace(
+                count=jnp.asarray(n_iter, dtype=inject_state.count.dtype),
+            ),
+            apply_every_state,
+        )
 # fmt: on
 
 
@@ -350,6 +365,9 @@ class Trainer:
 
         # Initialize optimizer state
         opt_state = self.optimizer.optax.init(model)
+
+        if resume_from > 0:
+            opt_state = self.optimizer.replay_state(opt_state, resume_from)
 
         with tqdm(
             total=self.optimizer.max_iters, disable=not self.show_progress
