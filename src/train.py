@@ -65,11 +65,9 @@ PROFILER_OPTIONS = jax.profiler.ProfileOptions()
 #PROFILER_OPTIONS.python_tracer_level = 0
 #PROFILER_OPTIONS.host_tracer_level = 0
 
-log = logging.getLogger(__file__)
-logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 
-# fmt: off
 @dataclass
 class WAndBConfig:
     """WAndB logging"""
@@ -151,12 +149,9 @@ class OptimizerConfig:
         """Read the current learning rate from the inject_hyperparams state"""
         i = self._inject_state_index(opt_state)
         return float(opt_state[i].hyperparams["learning_rate"])
-# fmt: on
 
 
-Batch = namedtuple(
-    "Batch", ["x", "y", "idx_shard", "idx_batches", "idx"], defaults=5 * (None,)
-)
+Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches", "idx"])
 
 
 @dataclass(frozen=True)
@@ -295,7 +290,6 @@ class Trainer:
 
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     profile: ProfileConfig = field(default_factory=ProfileConfig)
-    log_interval: int = 1
     eval_interval: int = 2000
     eval_iters: int = 3
     eval_hellaswag: bool = False
@@ -330,18 +324,18 @@ class Trainer:
             ).mean()
             return loss
 
+        # Dropout is disabled in eval, but loss_fn still requires a key.
+        eval_rng_key = jax.random.key(8273)
+
         def estimate_mean_loss(model, data_loader, n_iter):
             """Estimate mean loss across multiple iters"""
             losses = []
-
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
-                # the key can be ignored here, because dropout is skipped
                 value = loss_fn(
-                    model, batch, rng_key=jax.random.key(8273), is_training=False
+                    model, batch, rng_key=eval_rng_key, is_training=False
                 )
                 losses.append(value)
-
             return jnp.mean(jnp.asarray(losses))
 
         @partial(jax.jit, donate_argnames=("model", "opt_state"))
@@ -392,9 +386,12 @@ class Trainer:
                 range(1, self.optimizer.max_iters + 1), data_loader_train
             ):
                 if self.profile.record_trace and n_iter == self.profile.warm_up:
-                    path = self.profile.path / metadata['logging.wandb_run_name']
-                    jax.profiler.start_trace(path,  profiler_options=PROFILER_OPTIONS)
-                    log.info("Starting profiler, recording to %s", path)
+                    jax.profiler.start_trace(
+                        self.profile.path, profiler_options=PROFILER_OPTIONS
+                    )
+                    log.info(
+                        "Starting profiler, recording to %s", self.profile.path
+                    )
 
                 if n_iter <= resume_from:
                     pbar.update(1)
@@ -472,7 +469,6 @@ class Config:
     loading: DatasetLoader = field(default_factory=DatasetLoader)
     model: GPTConfig = field(default_factory=GPTConfig)
     logging: WAndBConfig = field(default_factory=WAndBConfig)
-    _key = None
 
     def __post_init__(self):
         # sync arguments after init
@@ -485,19 +481,10 @@ class Config:
         self.training.checkpoint_path = (
             PATH_DATA / "checkpoints" / self.logging.wandb_run_name
         )
+        self.training.profile.path = (
+            self.training.profile.path / self.logging.wandb_run_name
+        )
 
-
-    @property
-    def rng_key(self) -> jax.Array:
-        """Generate random key for initialization"""
-        if self._key is None:
-            self._key = jax.random.PRNGKey(self.seed)
-
-        # in general state based key generation is not a good idea in Jax!
-        # however the config class never(!) crosses any jit and function transform
-        # boundaries. So it is safe to use it here.
-        self._key, subkey = jax.random.split(self._key)
-        return subkey
 
     @property
     def loading_val(self):
@@ -566,15 +553,16 @@ def get_configs():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     config = tyro.extras.overridable_config_cli(get_configs())
 
-    resume_from, run_id = -1, None
+    resume_from, run_id, resume_path = -1, None, None
     if config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
-        latest = max(candidates, key=os.path.getctime)
+        resume_path = max(candidates, key=os.path.getctime)
 
-        with safe_open(latest, framework="numpy") as f:
-            log.info("Reading metadata from %s", latest)
+        with safe_open(resume_path, framework="numpy") as f:
+            log.info("Reading metadata from %s", resume_path)
             resume_from = int(f.metadata()["n-iter"])
             run_id = f.metadata().get("wandb-run-id")
 
@@ -604,10 +592,14 @@ if __name__ == "__main__":
     log.info("Using devices %s", config.sharding.jax.device_set)
     log.info("Using `%s` dot product implementation.", DOT_PRODUCT_ATTENTION)
 
-    model = GPT.from_init(config.init_from, config.model)
+    if resume_path is not None:
+        model = GPT.read(resume_path, transpose_weights=False)
+    else:
+        model = GPT.from_init(config.init_from, config.model)
 
     spec = {"device": config.sharding.jax, "dtype": config.dtype.jax}
-    model = model.init(rng_key=config.rng_key, **spec)
+    init_key, train_key = jax.random.split(jax.random.key(config.seed))
+    model = model.init(rng_key=init_key, **spec)
 
     log.info("%s", model.info())
 
@@ -615,7 +607,7 @@ if __name__ == "__main__":
         model=model,
         data_loader_train=data_loader_train,
         data_loader_validate=data_loader_validate,
-        rng_key=config.rng_key,
+        rng_key=train_key,
         metadata=metadata,
         resume_from=resume_from,
     )
