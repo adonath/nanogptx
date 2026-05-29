@@ -8,14 +8,12 @@ from pathlib import Path
 import requests
 import tyro
 
-from utils import DatasetEnum, PretrainedModels
+from utils import PATH_DATA, DatasetEnum, PretrainedModels
 
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-DATA_PATH = Path(__file__).parent.parent / "data"
-
 N_THREADS_DEFAULT = cpu_count() // 2
+DOWNLOAD_CHUNK_SIZE = 1 << 20  # 1 MiB
 
 
 MODEL_URLS = {
@@ -46,7 +44,7 @@ DATA_URLS = {
     DatasetEnum.fineweb_10b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb/resolve/main/sample/10BT/{idx:03d}_00000.parquet" for idx in range(15)],
     DatasetEnum.fineweb_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb/resolve/main/sample/100BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in product(range(15), range(10))],
     DatasetEnum.fineweb_edu_10b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT/{idx:03d}_00000.parquet" for idx in range(14)],
-    DatasetEnum.fineweb_edu_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/10BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in  product(range(14), range(10))],
+    DatasetEnum.fineweb_edu_100b: [f"https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu/resolve/main/sample/100BT/{idx_a:03d}_{idx_b:05d}.parquet" for idx_a, idx_b in product(range(14), range(10))],
     DatasetEnum.hellaswag: [
         "https://huggingface.co/datasets/Rowan/hellaswag/resolve/main/data/test-00000-of-00001.parquet",
         "https://huggingface.co/datasets/Rowan/hellaswag/resolve/main/data/train-00000-of-00001.parquet",
@@ -63,52 +61,46 @@ def extract_tar_and_remove(archive_path, extraction_path):
     if archive_path.name.endswith("gz"):
         mode += ":gz"
 
-    log.info(f"Reading {archive_path}")
+    log.info("Reading %s", archive_path)
     with tarfile.open(archive_path, mode) as tar:
         for member in tar.getmembers():
             if not member.isreg():
                 continue
 
-            log.info(f"Extracting {member.name} to {extraction_path}")
+            log.info("Extracting %s to %s", member.name, extraction_path)
             member.name = Path(member.name).name
             tar.extract(member, extraction_path)
 
-    log.info(f"Deleting {archive_path}")
+    log.info("Deleting %s", archive_path)
     archive_path.unlink()
 
 
 def decompress_zst_file(input_filepath, output_filepath):
-    """
-    Decompresses a .zst file to a specified output file.
-
-    Args:
-        input_filepath (str): Path to the .zst file to decompress.
-        output_filepath (str): Path where the decompressed data will be written.
-    """
+    """Decompress a .zst file to output_filepath"""
     import zstandard
 
     dctx = zstandard.ZstdDecompressor()
 
-    with open(input_filepath, "rb") as ifh:
-        with open(output_filepath, "wb") as ofh:
-            log.info(f"Extracting {input_filepath} to {output_filepath}")
-            dctx.copy_stream(ifh, ofh)
+    with open(input_filepath, "rb") as ifh, open(output_filepath, "wb") as ofh:
+        log.info("Extracting %s to %s", input_filepath, output_filepath)
+        dctx.copy_stream(ifh, ofh)
 
 
 def download_file(url, path):
     """Download file"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-
     if path.exists():
-        log.info(f"{path} already exists, skipping download!")
+        log.info("%s already exists, skipping download!", path)
         return path
 
-    log.info(f"Downloading from {url}")
-    response = requests.get(url, params={"download": True})
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    log.info(f"Saving to {path}")
-    with path.open("wb") as file:
-        file.write(response.content)
+    log.info("Downloading from %s", url)
+    with requests.get(url, params={"download": True}, stream=True) as response:
+        response.raise_for_status()
+        log.info("Saving to %s", path)
+        with path.open("wb") as file:
+            for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
+                file.write(chunk)
 
     if path.name.endswith((".tar", ".tar.gz")):
         extract_tar_and_remove(path, path.parent)
@@ -124,33 +116,40 @@ def download(
     dataset: DatasetEnum | None = None,
     n_threads: int = N_THREADS_DEFAULT,
 ):
-    """Download GPT2 weights from Huggingface
+    """Download model weights or a dataset from Huggingface
 
     Parameters
     ----------
-    key : str
-        Model identifier
+    model : PretrainedModels | None
+        Pretrained model identifier; weights and config are fetched to
+        ``data/models/<model>``.
+    dataset : DatasetEnum | None
+        Dataset identifier; shards are fetched to ``data/download/<dataset>``.
+    n_threads : int
+        Number of parallel download workers.
     """
     args = []
 
     if model is not None:
         model = PretrainedModels(model)
         urls = MODEL_URLS[model]
-        paths = [DATA_PATH / "models" / model.value / Path(url).name for url in urls]
+        paths = [PATH_DATA / "models" / model.value / Path(url).name for url in urls]
         args.extend(zip(urls, paths))
 
     if dataset is not None:
         dataset = DatasetEnum(dataset)
         urls = DATA_URLS[dataset]
         paths = [
-            DATA_PATH / "download" / dataset.value / Path(url).name for url in urls
+            PATH_DATA / "download" / dataset.value / Path(url).name for url in urls
         ]
         args.extend(zip(urls, paths))
 
     with ThreadPool(n_threads) as pool:
-        result = pool.starmap_async(download_file, args)
-        result.wait()
+        # `.get()` re-raises any exception from the worker threads; `.wait()`
+        # would silently swallow them.
+        pool.starmap_async(download_file, args).get()
 
 
 if __name__ == "__main__":
-    path = tyro.cli(download)
+    logging.basicConfig(level=logging.INFO)
+    tyro.cli(download)
