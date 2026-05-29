@@ -110,8 +110,8 @@ class OptimizerConfig:
         )
 
         def mask_fn(params):
-            """Select 2D parameters for decay"""
-            return jax.tree.map(lambda x: x.ndim >= 1, params)
+            """Select 2D+ parameters for decay (skip biases and norm scales)"""
+            return jax.tree.map(lambda x: x.ndim >= 2, params)
 
         adamw = optax.inject_hyperparams(optax.adamw)(
             learning_rate=lr_scheduler,
