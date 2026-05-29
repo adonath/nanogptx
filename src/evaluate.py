@@ -66,11 +66,12 @@ def tokenize_example(example, out_sharding=None) -> EvaluationExample:
 
 
 def load_hellaswag_examples(path, out_sharding=None):
-    """Load examples from a parquet file"""
+    """Yield examples from a parquet file, cycling indefinitely"""
     data = pd.read_parquet(path)
 
-    for row in data.itertuples(index=False):
-        yield tokenize_example(row, out_sharding=out_sharding)
+    while True:
+        for row in data.itertuples(index=False):
+            yield tokenize_example(row, out_sharding=out_sharding)
 
 
 @dataclass
