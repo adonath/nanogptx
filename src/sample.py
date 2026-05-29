@@ -2,7 +2,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -13,13 +12,13 @@ from safetensors import safe_open
 from model import DEFAULT_DEVICE, GPT, Axis
 from prepare import DTYPES, ENCODINGS
 from train import InitFromEnum
-from utils import PATH_DATA
+from utils import PATH_DATA, EncodingEnum
 from utils_jax import JaxDevicesEnum, JaxFloatDtypesEnum
 
 PREFIX = "FILE:"
 
 
-log = logging.getLogger(__file__)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,12 +37,17 @@ class TokenSampler:
         )
 
         n_tokens = tokens.shape[Axis.sequence]
-        width, width[Axis.sequence] = [(0, 0)] * tokens.ndim, (0, self.max_new_tokens)
+        block_size = model.config.block_size
+        # Left-pad so the first sliding-window slice starts at index 0 rather
+        # than getting clamped from a negative start. The pad tokens sit at the
+        # far left of the attention window where they have the least influence
+        # and slide off after `pad_left` generation steps.
+        pad_left = max(0, block_size - n_tokens)
+        width = [(0, 0)] * tokens.ndim
+        width[Axis.sequence] = (pad_left, self.max_new_tokens)
         tokens = jnp.pad(tokens, pad_width=width)
 
-        block_size = min(model.config.block_size, self.max_new_tokens)
-
-        def sample(context, idx):
+        def sample_step(context, idx):
             context_window = jax.lax.dynamic_slice_in_dim(
                 context,
                 idx - block_size,
@@ -53,7 +57,7 @@ class TokenSampler:
             logits = model(
                 context_window, rng_key=rng_key, is_training=False, inference=True
             )
-            logits = logits[:, -1:, :] / self.temperature
+            logits = logits / self.temperature
 
             if top_k is not None:
                 values, indices = jax.lax.top_k(logits, top_k)
@@ -74,20 +78,20 @@ class TokenSampler:
             context = context.at[:, idx].set(next_token)
             return context, next_token
 
-        idxs = jnp.arange(n_tokens, n_tokens + self.max_new_tokens)
-        _, next_tokens = jax.lax.scan(sample, tokens, idxs)
+        start = pad_left + n_tokens
+        idxs = jnp.arange(start, start + self.max_new_tokens)
+        _, next_tokens = jax.lax.scan(sample_step, tokens, idxs)
         return next_tokens.T
 
 
-# fmt: off
 @dataclass
 class SampleConfig:
     """Sampling configuration"""
 
     init_from: InitFromEnum = InitFromEnum.gpt2  # Initialization source
     start: str = "\n"  # Prompt string or file (e.g., '\n', '<|endoftext|>', or 'FILE:prompt.txt')
-    device: Optional[JaxDevicesEnum] = DEFAULT_DEVICE # Overwrite default device
-    dtype: Optional[JaxFloatDtypesEnum] = JaxFloatDtypesEnum.float32
+    device: JaxDevicesEnum = DEFAULT_DEVICE  # Overwrite default device
+    dtype: JaxFloatDtypesEnum = JaxFloatDtypesEnum.float32
     seed: int = 9283  # Random seed
     sampler: TokenSampler = field(default_factory=TokenSampler)
 
@@ -103,7 +107,6 @@ class SampleConfig:
             with open(self.start[len(PREFIX) :], "r", encoding="utf-8") as f:
                 return f.read()
         return self.start
-# fmt: on
 
 
 def sample(config):
@@ -111,24 +114,19 @@ def sample(config):
     if config.init_from == InitFromEnum.scratch:
         raise ValueError("Init from `scratch` is not supported for sampling")
 
-    model = GPT.from_init(config.init_from)
-
     if config.init_from == InitFromEnum.resume:
         candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
         latest = max(candidates, key=os.path.getctime)
         with safe_open(latest, framework="numpy") as f:
-            from train import Config
-
-            config_all = Config.from_safetensors_meta(f.metadata())
-            encoding = ENCODINGS[config_all.loading.index.encoding]
+            encoding_name = f.metadata().get("loading.index.encoding", "gpt2")
+        encoding = ENCODINGS[EncodingEnum(encoding_name)]
+        model = GPT.read(latest, transpose_weights=False)
     else:
         encoding = tiktoken.get_encoding("gpt2")
+        model = GPT.from_init(config.init_from)
 
-    x = jnp.asarray(
-        encoding.encode(config.prompt, allowed_special={"<|endoftext|>"}),
-        dtype=DTYPES[encoding.name],
-    )[None, ...]
-
+    prompt_tokens = encoding.encode(config.prompt, allowed_special={"<|endoftext|>"})
+    x = jnp.asarray(prompt_tokens, dtype=DTYPES[encoding.name])[None, ...]
     x = jax.device_put(x, config.device.jax)
 
     model = model.init(
@@ -136,19 +134,21 @@ def sample(config):
         dtype=config.dtype.jax,
     )
 
-    log.info(f"{model.info()}")
+    log.info("%s", model.info())
+    rng_key = config.rng_key
     for idx in range(config.sampler.num_samples):
-        sample = config.sampler.generate(
+        generated = config.sampler.generate(
             model=model,
             tokens=x,
-            rng_key=jax.random.fold_in(config.rng_key, idx),
+            rng_key=jax.random.fold_in(rng_key, idx),
         )
 
-        print(encoding.decode(sample[0].tolist()))
+        print(encoding.decode(prompt_tokens + generated[0].tolist()))
         print("---------------")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     config = tyro.cli(SampleConfig)
 
     start_time = time.perf_counter()
@@ -158,4 +158,4 @@ if __name__ == "__main__":
     tokens_per_second = (config.sampler.num_samples * config.sampler.max_new_tokens) / (
         end_time - start_time
     )
-    log.info(f"Sampled at {tokens_per_second:.2f} tok/s")
+    log.info("Sampled at %.2f tok/s", tokens_per_second)
