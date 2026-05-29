@@ -1,10 +1,8 @@
 import json
 import logging
 import os
-import profile
 import time
 from collections import namedtuple
-from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
 from itertools import cycle
@@ -20,7 +18,6 @@ import tyro
 from dacite import Config as DaciteConfig
 from dacite import UnexpectedDataError, from_dict
 from jax import numpy as jnp
-from jax import tree_util
 from safetensors import safe_open
 from tqdm import tqdm
 
