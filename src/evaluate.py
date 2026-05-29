@@ -1,9 +1,10 @@
 import logging
-from collections import namedtuple
 from dataclasses import dataclass
+from functools import lru_cache
 
 import jax
 import numpy as np
+import pandas as pd
 import tiktoken
 import tyro
 from jax import numpy as jnp
@@ -12,18 +13,31 @@ from optax.losses import softmax_cross_entropy_with_integer_labels
 from model import GPT
 from utils import PATH_DATA, InitFromEnum
 
-log = logging.getLogger(__file__)
-logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 TAB_WIDTH = 4
-EvaluationExample = namedtuple(
-    "EvaluationExample", ["ctx", "endings", "tokens", "mask", "label"]
-)
 
 
-def tokenize_example(example, out_sharding=None):
-    """Tokenize a single example"""
-    enc = tiktoken.get_encoding("gpt2")
+@dataclass
+class EvaluationExample:
+    """A single multiple-choice evaluation example"""
+
+    ctx: str
+    endings: list[str]
+    tokens: jax.Array
+    mask: jax.Array
+    label: int
+
+
+@lru_cache(maxsize=1)
+def _get_gpt2_encoder():
+    """Load and cache the GPT-2 tiktoken encoder"""
+    return tiktoken.get_encoding("gpt2")
+
+
+def tokenize_example(example, out_sharding=None) -> EvaluationExample:
+    """Tokenize a single multiple-choice example"""
+    enc = _get_gpt2_encoder()
 
     ctx_tokens = enc.encode(example.ctx)
     tok_rows, mask_rows = [], []
@@ -33,9 +47,10 @@ def tokenize_example(example, out_sharding=None):
         tok_rows.append(ctx_tokens + end_tokens)
         mask_rows.append([0] * len(ctx_tokens) + [1] * len(end_tokens))
 
+    n_endings = len(tok_rows)
     max_len = max(len(row) for row in tok_rows)
-    tokens = np.zeros((4, max_len), dtype=np.int64)
-    mask = np.zeros((4, max_len), dtype=np.int64)
+    tokens = np.zeros((n_endings, max_len), dtype=np.int32)
+    mask = np.zeros((n_endings, max_len), dtype=bool)
 
     for i, (tok_row, mask_row) in enumerate(zip(tok_rows, mask_rows)):
         tokens[i, : len(tok_row)] = np.asarray(tok_row)
@@ -52,12 +67,10 @@ def tokenize_example(example, out_sharding=None):
 
 def load_hellaswag_examples(path, out_sharding=None):
     """Load examples from a parquet file"""
-    import pandas as pd
-
     data = pd.read_parquet(path)
 
-    for idx in range(len(data)):
-        yield tokenize_example(data.iloc[idx], out_sharding=out_sharding)
+    for row in data.itertuples(index=False):
+        yield tokenize_example(row, out_sharding=out_sharding)
 
 
 @dataclass
@@ -81,22 +94,22 @@ class ModelEvaluator:
         )
         print(f"Context:\n\t{example.ctx}".expandtabs(TAB_WIDTH))
         print("Endings:")
-        for idx, end in enumerate(example.endings):
+        for i, end in enumerate(example.endings):
             print(
-                f"\t{idx} (loss: {avg_loss[idx].item():.4f}) {end}".expandtabs(
-                    TAB_WIDTH
-                )
+                f"\t{i} (loss: {avg_loss[i].item():.4f}) {end}".expandtabs(TAB_WIDTH)
             )
         print()
 
-    def evaluate(self, model, data_loader):
+    def evaluate(self, model, data_loader) -> float:
         """Evaluate hellaswag accuracy"""
         num_correct = 0
+        n_seen = 0
+        rng_key = jax.random.key(9232)
 
         for idx, example in zip(range(1, self.n_examples + 1), data_loader):
             logits = model(
                 example.tokens,
-                rng_key=jax.random.key(9232),
+                rng_key=rng_key,
                 is_training=False,
                 inference=False,
             )
@@ -107,14 +120,16 @@ class ModelEvaluator:
             pred = jnp.argmin(avg_loss, axis=0)
 
             num_correct += int(pred == example.label)
+            n_seen = idx
 
             if self.print_results:
                 self.print_result(idx, example, num_correct, pred, avg_loss)
 
-        return num_correct / self.n_examples
+        return num_correct / n_seen if n_seen else 0.0
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     evaluator = tyro.cli(ModelEvaluator)
 
     hellaswag = load_hellaswag_examples(
@@ -124,4 +139,4 @@ if __name__ == "__main__":
     model = GPT.from_init(InitFromEnum.gpt2).init()
 
     accuracy = evaluator.evaluate(model=model, data_loader=hellaswag)
-    print(f"Overall accuracy: {accuracy:.2f}")
+    log.info("Overall accuracy: %.4f", accuracy)
