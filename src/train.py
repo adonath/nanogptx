@@ -345,10 +345,12 @@ class Trainer:
             arrays = {k: f.get_tensor(k) for k in f.keys()}
 
         def graft(tree_path, leaf):
-            return jax.device_put(
-                jnp.asarray(arrays[join_path(tree_path)], dtype=leaf.dtype),
-                leaf.sharding,
-            )
+            if isinstance(leaf, jax.Array):
+                return jax.device_put(
+                    jnp.asarray(arrays[join_path(tree_path)], dtype=leaf.dtype),
+                    leaf.sharding,
+                )
+            return leaf
 
         opt_state = jax.tree.map_with_path(graft, fresh_opt_state)
         resume = Batch(
@@ -633,8 +635,9 @@ if __name__ == "__main__":
             resume_from = int(f.metadata()["n-iter"])
             run_id = f.metadata().get("wandb-run-id")
 
-        resume_opt_state_path = resume_path.parent / config.training.opt_state_pattern.format(
-            n_iter=resume_from
+        resume_opt_state_path = (
+            resume_path.parent
+            / config.training.opt_state_pattern.format(n_iter=resume_from)
         )
         if not resume_opt_state_path.exists():
             raise FileNotFoundError(
