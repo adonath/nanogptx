@@ -2,10 +2,8 @@ import json
 import logging
 import os
 import time
-from collections import namedtuple
 from dataclasses import asdict, dataclass, field, replace
 from functools import cached_property, partial
-from itertools import cycle
 from pathlib import Path
 from typing import Literal
 
@@ -15,13 +13,15 @@ import optax
 import tomli_w
 import tomllib
 import tyro
+import wandb
 from dacite import Config as DaciteConfig
 from dacite import UnexpectedDataError, from_dict
 from jax import numpy as jnp
+from jax.tree_util import register_dataclass
 from safetensors import safe_open
+from safetensors.flax import save_file
 from tqdm import tqdm
 
-import wandb
 from evaluate import ModelEvaluator, load_hellaswag_examples
 from model import DOT_PRODUCT_ATTENTION, GPT, GPTConfig
 from utils import (
@@ -42,6 +42,7 @@ from utils_jax import (
     JaxIntDtypesEnum,
     ShardingConfig,
     flatten_pytree_with_path,
+    join_path,
     update_leave_from_mapping,
 )
 
@@ -62,8 +63,8 @@ DACITE_CAST = [
 ]
 DACITE_CONFIG = DaciteConfig(cast=DACITE_CAST, strict=True)
 PROFILER_OPTIONS = jax.profiler.ProfileOptions()
-#PROFILER_OPTIONS.python_tracer_level = 0
-#PROFILER_OPTIONS.host_tracer_level = 0
+# PROFILER_OPTIONS.python_tracer_level = 0
+# PROFILER_OPTIONS.host_tracer_level = 0
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +95,9 @@ class OptimizerConfig:
     warmup_iters: int = 2000  # how many steps to warm up for
     lr_decay_iters: int = 600000  # should be ~= max_iters per Chinchilla
     gradient_accumulation_steps: int = 5 * 8  # used to simulate larger batch sizes
-    min_lr: float = 6e-5  # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
+    min_lr: float = (
+        6e-5  # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
+    )
 
     @property
     def optax(self):
@@ -133,25 +136,24 @@ class OptimizerConfig:
                 return i
         raise ValueError("Optimizer chain has no inject_hyperparams state")
 
-    def replay_state(self, opt_state, n_iter):
-        """Advance the LR schedule to step n_iter without restoring Adam moments"""
-        # Only the inject_hyperparams count drives the warmup/cosine schedule;
-        # bumping it makes the schedule return the right LR after resume.
-        # Adam's inner count and moments stay zero so bias correction is
-        # well-defined while moments rebuild over the next few hundred steps.
-        i = self._inject_state_index(opt_state)
-        inject = opt_state[i]._replace(
-            count=jnp.asarray(n_iter, dtype=opt_state[i].count.dtype),
-        )
-        return opt_state[:i] + (inject,) + opt_state[i + 1 :]
-
     def current_lr(self, opt_state):
         """Read the current learning rate from the inject_hyperparams state"""
         i = self._inject_state_index(opt_state)
         return float(opt_state[i].hyperparams["learning_rate"])
 
 
-Batch = namedtuple("Batch", ["x", "y", "idx_shard", "idx_batches", "idx"])
+@register_dataclass
+@dataclass
+class Batch:
+    """Batch of training data with enough state to resume the data loader"""
+
+    x: jax.Array
+    y: jax.Array
+    idx_batches: np.ndarray
+    idx: int = field(metadata=dict(static=True))
+    idx_shard: int = field(metadata=dict(static=True))
+    shard_cycle: int = field(metadata=dict(static=True))
+    rng_state: dict = field(metadata=dict(static=True))
 
 
 @dataclass(frozen=True)
@@ -238,7 +240,7 @@ class DatasetLoader:
         """Number of shards"""
         return len(self.filenames)
 
-    def iter(self, block_size):
+    def iter(self, block_size, resume=None):
         random_state = np.random.default_rng(self.seed)
 
         shards = np.arange(self.n_shards)
@@ -246,7 +248,18 @@ class DatasetLoader:
         if self.randomize_shards:
             shards = random_state.permutation(shards)
 
-        for idx_shard in cycle(shards):
+        shard_cycle_start = 0
+        resume_idx = -1
+
+        if resume is not None:
+            random_state.bit_generator.state = resume.rng_state
+            shard_cycle_start = resume.shard_cycle
+            resume_idx = resume.idx
+
+        shard_cycle = shard_cycle_start
+
+        while True:
+            idx_shard = int(shards[shard_cycle % len(shards)])
             filename, checksum = (
                 self.filenames[idx_shard]["name"],
                 self.filenames[idx_shard]["checksum"],
@@ -260,27 +273,35 @@ class DatasetLoader:
                 if self.verify and checksum != get_checksum(data):
                     raise ValueError(f"Checksum does not agree for {filename}")
 
+            max_val = len(data) - block_size
+            n_batches = len(data) // self.batch_size // block_size
+            start_idx = resume_idx + 1 if shard_cycle == shard_cycle_start else 0
+
             # we aim for a statistical coverage here...
-            for idx in range(len(data) // self.batch_size // block_size):
-                max_val = len(data) - block_size
+            for idx in range(start_idx, n_batches):
                 idx_batches = random_state.integers(max_val, size=(self.batch_size,))
-                
                 x = np.stack([data[i : i + block_size] for i in idx_batches])
                 y = np.stack([data[i + 1 : i + 1 + block_size] for i in idx_batches])
                 yield Batch(
                     x=jax.device_put(x, self.sharding.jax),
                     y=jax.device_put(y, self.sharding.jax),
+                    idx_batches=idx_batches,
                     idx=idx,
                     idx_shard=idx_shard,
-                    idx_batches=idx_batches,
+                    shard_cycle=shard_cycle,
+                    rng_state=random_state.bit_generator.state,
                 )
+
+            shard_cycle += 1
+
 
 @dataclass
 class ProfileConfig:
     """Profiling configuration"""
+
     record_trace: bool = False  # Whether ro record a profile trace
     path: Path = PATH_BASE / ".profile"  # Where to save the trace
-    warm_up: int = 5  # Number of warm up iterations 
+    warm_up: int = 5  # Number of warm up iterations
     n_iters: int = 2  # Number of iterations to capture
 
 
@@ -299,6 +320,47 @@ class Trainer:
     total_batch_size: int = 256  # total batch size in units of tokens
     checkpoint_path: Path = PATH_DATA / "checkpoints"
     filename_pattern: str = "model-n-iter-{n_iter}.safetensors"
+    opt_state_pattern: str = "opt-state-n-iter-{n_iter}.safetensors"
+
+    def _save_opt_state(self, opt_state, batch, n_iter):
+        """Persist optimizer state and data loader resume info"""
+        path = self.checkpoint_path / self.opt_state_pattern.format(n_iter=n_iter)
+        log.info("Writing optimizer state to %s", path)
+        save_file(
+            flatten_pytree_with_path(opt_state),
+            path,
+            metadata={
+                "rng_state": json.dumps(batch.rng_state),
+                "shard_cycle": str(batch.shard_cycle),
+                "idx": str(batch.idx),
+                "idx_shard": str(batch.idx_shard),
+            },
+        )
+
+    def _load_opt_state(self, path, fresh_opt_state):
+        """Restore optimizer state into a freshly initialized pytree"""
+        log.info("Reading optimizer state from %s", path)
+        with safe_open(path, framework="numpy") as f:
+            meta = f.metadata()
+            arrays = {k: f.get_tensor(k) for k in f.keys()}
+
+        def graft(tree_path, leaf):
+            return jax.device_put(
+                jnp.asarray(arrays[join_path(tree_path)], dtype=leaf.dtype),
+                leaf.sharding,
+            )
+
+        opt_state = jax.tree.map_with_path(graft, fresh_opt_state)
+        resume = Batch(
+            x=None,
+            y=None,
+            idx_batches=None,
+            idx=int(meta["idx"]),
+            idx_shard=int(meta["idx_shard"]),
+            shard_cycle=int(meta["shard_cycle"]),
+            rng_state=json.loads(meta["rng_state"]),
+        )
+        return opt_state, resume
 
     def train(
         self,
@@ -308,6 +370,7 @@ class Trainer:
         rng_key,
         metadata,
         resume_from=-1,
+        resume_opt_state_path=None,
     ):
         """Train model"""
 
@@ -316,12 +379,10 @@ class Trainer:
             self.optimizer.gradient_accumulation_steps,
         )
 
-        def loss_fn(model, batch, rng_key, is_training):
+        def loss_fn(model, x, y, rng_key, is_training):
             """Loss function"""
-            logits = model(batch.x, rng_key, is_training=is_training)
-            loss = optax.softmax_cross_entropy_with_integer_labels(
-                logits, batch.y
-            ).mean()
+            logits = model(x, rng_key, is_training=is_training)
+            loss = optax.softmax_cross_entropy_with_integer_labels(logits, y).mean()
             return loss
 
         # Dropout is disabled in eval, but loss_fn still requires a key.
@@ -333,16 +394,16 @@ class Trainer:
             # the range constrains the infinite data loader
             for _, batch in zip(range(n_iter), data_loader):
                 value = loss_fn(
-                    model, batch, rng_key=eval_rng_key, is_training=False
+                    model, batch.x, batch.y, rng_key=eval_rng_key, is_training=False
                 )
                 losses.append(value)
             return jnp.mean(jnp.asarray(losses))
 
         @partial(jax.jit, donate_argnames=("model", "opt_state"))
-        def train_step(model, opt_state, batch, rng):
+        def train_step(model, opt_state, x, y, rng):
             """Training step"""
             value, grads = jax.value_and_grad(loss_fn)(
-                model, batch, rng, is_training=True
+                model, x, y, rng, is_training=True
             )
             updates, opt_state = self.optimizer.optax.update(grads, opt_state, model)
             model = optax.apply_updates(model, updates)
@@ -362,45 +423,51 @@ class Trainer:
                 out_sharding=eval_sharding,
             )
 
-        data_loader_train = data_loader_train.iter(block_size=model.config.block_size)
+        # Initialize optimizer state; restore from checkpoint if resuming
+        opt_state = self.optimizer.optax.init(model)
+        resume_batch = None
+
+        if resume_opt_state_path is not None:
+            opt_state, resume_batch = self._load_opt_state(
+                resume_opt_state_path, opt_state
+            )
+
+        data_loader_train = data_loader_train.iter(
+            block_size=model.config.block_size, resume=resume_batch
+        )
         data_loader_validate = data_loader_validate.iter(
             block_size=model.config.block_size
         )
-
-        # Initialize optimizer state
-        opt_state = self.optimizer.optax.init(model)
-
-        if resume_from > 0:
-            opt_state = self.optimizer.replay_state(opt_state, resume_from)
 
         # `dt` accumulates wall time across the eval window so the average step
         # time is measured over many dispatches, not the single async dispatch
         # of the current step.
         time_start = time.perf_counter()
-        n_iter_last_eval = max(resume_from, 0)
+        start_iter = max(resume_from, 0) + 1
+        n_iter_last_eval = start_iter - 1
 
         with tqdm(
-            total=self.optimizer.max_iters, disable=not self.show_progress
+            total=self.optimizer.max_iters,
+            initial=start_iter - 1,
+            disable=not self.show_progress,
         ) as pbar:
             for n_iter, batch in zip(
-                range(1, self.optimizer.max_iters + 1), data_loader_train
+                range(start_iter, self.optimizer.max_iters + 1), data_loader_train
             ):
                 if self.profile.record_trace and n_iter == self.profile.warm_up:
                     jax.profiler.start_trace(
                         self.profile.path, profiler_options=PROFILER_OPTIONS
                     )
-                    log.info(
-                        "Starting profiler, recording to %s", self.profile.path
-                    )
-
-                if n_iter <= resume_from:
-                    pbar.update(1)
-                    continue
+                    log.info("Starting profiler, recording to %s", self.profile.path)
 
                 sub_rng_key = jax.random.fold_in(rng_key, n_iter)
-                model, opt_state, loss_train = train_step(model, opt_state, batch, sub_rng_key)
+                model, opt_state, loss_train = train_step(
+                    model, opt_state, batch.x, batch.y, sub_rng_key
+                )
 
-                if self.profile.record_trace and n_iter == (self.profile.warm_up + self.profile.n_iters):
+                if self.profile.record_trace and n_iter == (
+                    self.profile.warm_up + self.profile.n_iters
+                ):
                     loss_train = jax.block_until_ready(loss_train)
                     jax.profiler.stop_trace()
                     log.info("Stop profiling")
@@ -451,6 +518,7 @@ class Trainer:
                         / self.filename_pattern.format(n_iter=n_iter),
                         metadata=metadata,
                     )
+                    self._save_opt_state(opt_state, batch, n_iter)
 
                 pbar.update(1)
 
@@ -484,7 +552,6 @@ class Config:
         self.training.profile.path = (
             self.training.profile.path / self.logging.wandb_run_name
         )
-
 
     @property
     def loading_val(self):
@@ -556,15 +623,23 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     config = tyro.extras.overridable_config_cli(get_configs())
 
-    resume_from, run_id, resume_path = -1, None, None
+    resume_from, run_id, resume_path, resume_opt_state_path = -1, None, None, None
     if config.init_from == InitFromEnum.resume:
-        candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
+        candidates = (PATH_DATA / "checkpoints").glob("**/model-n-iter-*.safetensors")
         resume_path = max(candidates, key=os.path.getctime)
 
         with safe_open(resume_path, framework="numpy") as f:
             log.info("Reading metadata from %s", resume_path)
             resume_from = int(f.metadata()["n-iter"])
             run_id = f.metadata().get("wandb-run-id")
+
+        resume_opt_state_path = resume_path.parent / config.training.opt_state_pattern.format(
+            n_iter=resume_from
+        )
+        if not resume_opt_state_path.exists():
+            raise FileNotFoundError(
+                f"Optimizer state not found alongside model: {resume_opt_state_path}"
+            )
 
     metadata = config.to_safetensors_meta()
 
@@ -580,9 +655,7 @@ if __name__ == "__main__":
         metadata["wandb-run-id"] = str(run.id)
 
     data_loader_train = config.loading
-    log.info(
-        "Training dataset has %d tokens.", data_loader_train.index.n_tokens_total
-    )
+    log.info("Training dataset has %d tokens.", data_loader_train.index.n_tokens_total)
 
     data_loader_validate = config.loading_val
     log.info(
@@ -610,6 +683,7 @@ if __name__ == "__main__":
         rng_key=train_key,
         metadata=metadata,
         resume_from=resume_from,
+        resume_opt_state_path=resume_opt_state_path,
     )
 
     filename = (
