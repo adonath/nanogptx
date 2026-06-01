@@ -101,9 +101,9 @@ class OptimizerConfig:
     )
 
     @property
-    def optax(self):
-        """Generate optax optimizer"""
-        lr_scheduler = optax.warmup_cosine_decay_schedule(
+    def lr_schedule(self):
+        """Learning-rate schedule, indexed by optimizer step"""
+        return optax.warmup_cosine_decay_schedule(
             init_value=0.0,
             peak_value=self.learning_rate,
             warmup_steps=self.warmup_iters,
@@ -111,12 +111,16 @@ class OptimizerConfig:
             end_value=self.min_lr,
         )
 
+    @property
+    def optax(self):
+        """Generate optax optimizer"""
+
         def mask_fn(params):
             """Select 2D+ parameters for decay (skip biases and norm scales)"""
             return jax.tree.map(lambda x: x.ndim >= 2, params)
 
-        adamw = optax.inject_hyperparams(optax.adamw)(
-            learning_rate=lr_scheduler,
+        adamw = optax.adamw(
+            learning_rate=self.lr_schedule,
             b1=self.beta1,
             b2=self.beta2,
             weight_decay=self.weight_decay,
@@ -125,34 +129,16 @@ class OptimizerConfig:
 
         # The optimizer runs once per optimizer step on the gradient already
         # averaged over `gradient_accumulation_steps` micro-batches in the
-        # training loop, so the Adam moments and the injected LR schedule advance
-        # once per optimizer step (matching nanoGPT's `get_lr(iter_num)`).
+        # training loop, so the Adam moments and the LR schedule advance once per
+        # optimizer step (matching nanoGPT's `get_lr(iter_num)`).
         return optax.chain(
             optax.clip_by_global_norm(self.grad_clip),
             adamw,
         )
 
-    @staticmethod
-    def _find_inject_state(opt_state):
-        """Find the inject_hyperparams state anywhere in the optimizer state.
-
-        Searching the (namedtuple-based) state tree instead of assuming a fixed
-        index keeps this robust to changes in the surrounding optimizer chain.
-        """
-        stack = [opt_state]
-        while stack:
-            node = stack.pop()
-            hyperparams = getattr(node, "hyperparams", None)
-            if isinstance(hyperparams, dict) and "learning_rate" in hyperparams:
-                return node
-            if isinstance(node, tuple):  # descend into (named)tuple children
-                stack.extend(node)
-        raise ValueError("Optimizer chain has no inject_hyperparams state")
-
-    def current_lr(self, opt_state):
-        """Read the current learning rate from the inject_hyperparams state"""
-        state = self._find_inject_state(opt_state)
-        return float(state.hyperparams["learning_rate"])
+    def current_lr(self, step):
+        """Learning rate at a given optimizer step"""
+        return float(self.lr_schedule(step))
 
 
 @register_dataclass
@@ -529,7 +515,7 @@ class Trainer:
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
                     )
-                    lr = self.optimizer.current_lr(opt_state)
+                    lr = self.optimizer.current_lr(n_iter)
                     pbar.set_postfix_str(
                         f"Loss train: {loss_train.item():.3f}, Loss val: {loss_val.item():.3f}, lr: {lr:.5f}, mfu: {(mfu):.0%}, tok/s: {sizeof_fmt(tps, system='decimal')}"
                     )
