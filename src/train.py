@@ -84,17 +84,18 @@ class OptimizerConfig:
     """Optimizer configuration"""
 
     learning_rate: float = 6e-4  # max learning rate
-    max_iters: int = 600000  # total number of training iterations
+    max_iters: int = 600000  # total number of optimizer steps (each does `accum` micro-steps)
     weight_decay: float = 1e-1
     beta1: float = 0.9
     beta2: float = 0.95
     grad_clip: float = 1.0  # clip gradients at this value, or disable if == 0.0
 
-    # learning rate decay settings
+    # learning rate decay settings. Like nanoGPT, every counter here (max_iters,
+    # warmup_iters, lr_decay_iters) is in optimizer steps, not micro-steps.
     decay_lr: bool = True  # whether to decay the learning rate
-    warmup_iters: int = 2000  # how many steps to warm up for
+    warmup_iters: int = 2000  # how many optimizer steps to warm up for
     lr_decay_iters: int = 600000  # should be ~= max_iters per Chinchilla
-    gradient_accumulation_steps: int = 5 * 8  # used to simulate larger batch sizes
+    gradient_accumulation_steps: int = 5 * 8  # micro-steps accumulated per optimizer step
     min_lr: float = (
         6e-5  # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
     )
@@ -122,24 +123,36 @@ class OptimizerConfig:
             mask=mask_fn,
         )
 
+        # The optimizer runs once per optimizer step on the gradient already
+        # averaged over `gradient_accumulation_steps` micro-batches in the
+        # training loop, so the Adam moments and the injected LR schedule advance
+        # once per optimizer step (matching nanoGPT's `get_lr(iter_num)`).
         return optax.chain(
             optax.clip_by_global_norm(self.grad_clip),
             adamw,
-            optax.apply_every(self.gradient_accumulation_steps),
         )
 
     @staticmethod
-    def _inject_state_index(opt_state):
-        """Index of the inject_hyperparams state in the optimizer chain"""
-        for i, state in enumerate(opt_state):
-            if hasattr(state, "hyperparams"):
-                return i
+    def _find_inject_state(opt_state):
+        """Find the inject_hyperparams state anywhere in the optimizer state.
+
+        Searching the (namedtuple-based) state tree instead of assuming a fixed
+        index keeps this robust to changes in the surrounding optimizer chain.
+        """
+        stack = [opt_state]
+        while stack:
+            node = stack.pop()
+            hyperparams = getattr(node, "hyperparams", None)
+            if isinstance(hyperparams, dict) and "learning_rate" in hyperparams:
+                return node
+            if isinstance(node, tuple):  # descend into (named)tuple children
+                stack.extend(node)
         raise ValueError("Optimizer chain has no inject_hyperparams state")
 
     def current_lr(self, opt_state):
         """Read the current learning rate from the inject_hyperparams state"""
-        i = self._inject_state_index(opt_state)
-        return float(opt_state[i].hyperparams["learning_rate"])
+        state = self._find_inject_state(opt_state)
+        return float(state.hyperparams["learning_rate"])
 
 
 @register_dataclass
@@ -401,15 +414,47 @@ class Trainer:
                 losses.append(value)
             return jnp.mean(jnp.asarray(losses))
 
-        @partial(jax.jit, donate_argnames=("model", "opt_state"))
-        def train_step(model, opt_state, x, y, rng):
-            """Training step"""
+        # One optimizer step accumulates gradients over `accum_steps` micro-
+        # batches, averages them (like nanoGPT's `loss / accum`), and runs the
+        # optimizer once. The `n_iter` loop below therefore counts optimizer
+        # steps, and every interval/schedule keyed off it is in those units.
+        accum_steps = self.optimizer.gradient_accumulation_steps
+        optimizer = self.optimizer.optax
+
+        @partial(jax.jit, donate_argnames=("grad_acc",))
+        def accumulate_grad(model, grad_acc, x, y, rng):
+            """Add one micro-batch gradient onto the accumulator"""
             value, grads = jax.value_and_grad(loss_fn)(
                 model, x, y, rng, is_training=True
             )
-            updates, opt_state = self.optimizer.optax.update(grads, opt_state, model)
+            grad_acc = jax.tree.map(jnp.add, grad_acc, grads)
+            return grad_acc, value
+
+        @partial(jax.jit, donate_argnames=("model", "opt_state"))
+        def apply_grads(model, opt_state, grad_acc):
+            """Apply the mean accumulated gradient as a single optimizer step"""
+            grads = jax.tree.map(lambda g: g / accum_steps, grad_acc)
+            updates, opt_state = optimizer.update(grads, opt_state, model)
             model = optax.apply_updates(model, updates)
-            return model, opt_state, value
+            return model, opt_state
+
+        def optimizer_step(model, opt_state, data_loader, n_iter):
+            """Run `accum_steps` micro-batches followed by one optimizer update"""
+            grad_acc = jax.tree.map(jnp.zeros_like, model)
+            micro_keys = jax.random.split(
+                jax.random.fold_in(rng_key, n_iter), accum_steps
+            )
+            losses, batch = [], None
+            for micro_key in micro_keys:
+                # `batch` keeps the last micro-batch consumed so checkpoints
+                # store the data-loader position to resume *after* this step.
+                batch = next(data_loader)
+                grad_acc, value = accumulate_grad(
+                    model, grad_acc, batch.x, batch.y, micro_key
+                )
+                losses.append(value)
+            model, opt_state = apply_grads(model, opt_state, grad_acc)
+            return model, opt_state, jnp.mean(jnp.asarray(losses)), batch
 
         flops = model.flops(
             batch_size=data_loader_train.batch_size,
@@ -426,7 +471,7 @@ class Trainer:
             )
 
         # Initialize optimizer state; restore from checkpoint if resuming
-        opt_state = self.optimizer.optax.init(model)
+        opt_state = optimizer.init(model)
         resume_batch = None
 
         if resume_opt_state_path is not None:
@@ -453,18 +498,15 @@ class Trainer:
             initial=start_iter - 1,
             disable=not self.show_progress,
         ) as pbar:
-            for n_iter, batch in zip(
-                range(start_iter, self.optimizer.max_iters + 1), data_loader_train
-            ):
+            for n_iter in range(start_iter, self.optimizer.max_iters + 1):
                 if self.profile.record_trace and n_iter == self.profile.warm_up:
                     jax.profiler.start_trace(
                         self.profile.path, profiler_options=PROFILER_OPTIONS
                     )
                     log.info("Starting profiler, recording to %s", self.profile.path)
 
-                sub_rng_key = jax.random.fold_in(rng_key, n_iter)
-                model, opt_state, loss_train = train_step(
-                    model, opt_state, batch.x, batch.y, sub_rng_key
+                model, opt_state, loss_train, batch = optimizer_step(
+                    model, opt_state, data_loader_train, n_iter
                 )
 
                 if self.profile.record_trace and n_iter == (
@@ -479,9 +521,10 @@ class Trainer:
                     dt = time.perf_counter() - time_start
                     step_time = dt / (n_iter - n_iter_last_eval)
 
-                    # train_step does one fwd+bwd; PaLM-style 3x ratio.
-                    mfu = 3 * flops.per_iter / FLOPS_UNIT / step_time
-                    tps = flops.tokens_per_iter / step_time
+                    # Each optimizer step does `accum_steps` fwd+bwd passes;
+                    # PaLM-style 3x ratio accounts for the backward pass.
+                    mfu = 3 * accum_steps * flops.per_iter / FLOPS_UNIT / step_time
+                    tps = accum_steps * flops.tokens_per_iter / step_time
 
                     loss_val = estimate_mean_loss(
                         model, data_loader_validate, n_iter=self.eval_iters
