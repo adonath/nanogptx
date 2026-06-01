@@ -588,9 +588,20 @@ class GPT:
         rng_key, sub_rng_key = jax.random.split(rng_key)
         x = self.drop(tok_emb + pos_emb, rng_key=sub_rng_key, is_training=is_training)
 
-        for block in self.h:
+        # Stack the per-layer Blocks into a single Block pytree with a leading
+        # layer axis and scan over it. The blocks share an identical structure
+        # (same config), so only one Block body is traced/compiled instead of
+        # `n_layer`, which cuts compile time. RNG is threaded through the carry
+        # to match the sequential `jax.random.split` of the original loop.
+        stacked_blocks = jax.tree.map(lambda *blocks: jnp.stack(blocks), *self.h)
+
+        def scan_block(carry, block):
+            x, rng_key = carry
             rng_key, sub_rng_key = jax.random.split(rng_key)
             x = block(x, rng_key=sub_rng_key, is_training=is_training)
+            return (x, rng_key), None
+
+        (x, rng_key), _ = jax.lax.scan(scan_block, (x, rng_key), stacked_blocks)
 
         x = self.ln_f(x)
 
