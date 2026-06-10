@@ -42,7 +42,23 @@ if jax.config.values.get("jax_enable_x64", False):
     )
 
 
-join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
+try:
+    join_path = partial(tree_util.keystr, simple=True, separator=KEY_SEP)
+    join_path(())  # probe for the simple kwarg
+except TypeError:
+
+    def join_path(keys):
+        parts = []
+        for k in keys:
+            if hasattr(k, "name"):
+                parts.append(k.name)
+            elif hasattr(k, "idx"):
+                parts.append(str(k.idx))
+            elif hasattr(k, "key"):
+                parts.append(str(k.key))
+            else:
+                parts.append(str(k))
+        return KEY_SEP.join(parts)
 
 
 def read_safetensors_header(file_path: str) -> dict[str, tuple]:

@@ -55,6 +55,7 @@ from utils import PATH_DATA, InitFromEnum, PretrainedModels, sizeof_fmt
 from utils_jax import (
     JaxDevicesEnum,
     JaxDtypesEnum,
+    dot_product_attention_simple,
     flatten_pytree_with_path,
     read_safetensors_header,
     update_leave_from_mapping,
@@ -67,7 +68,13 @@ DEFAULT_INIT_STD = 0.02
 DEFAULT_DTYPE = JaxDtypesEnum.float32
 DEFAULT_RNG_KEY = jax.random.key(98238)
 DEFAULT_DEVICE = tuple(JaxDevicesEnum)[0]
-DOT_PRODUCT_ATTENTION = "cudnn" if "cuda" in str(DEFAULT_DEVICE) else "xla"
+_device_str = str(DEFAULT_DEVICE).lower()
+if "cuda" in _device_str:
+    DOT_PRODUCT_ATTENTION = "cudnn"
+elif "metal" in _device_str:
+    DOT_PRODUCT_ATTENTION = None
+else:
+    DOT_PRODUCT_ATTENTION = "xla"
 
 
 class Axis(int, Enum):
@@ -365,11 +372,10 @@ class Dropout:
 
     @jax.named_scope("Dropout")
     def __call__(self, x, rng_key, is_training):
-        if is_training:
-            # taken from https://github.com/patrick-kidger/equinox/blob/main/equinox/nn/_dropout.py#L95C13-L97C45
+        if is_training and self.rate > 0:
             q = 1 - jax.lax.stop_gradient(self.rate)
             mask = jax.random.bernoulli(rng_key, q, x.shape)
-            return jnp.where(mask, x / q, 0)
+            return x * mask / q
 
         return x
 
@@ -381,7 +387,6 @@ class Gelu:
 
     approximate: bool = field(default=True, metadata=dict(static=True))
 
-    @jax.checkpoint
     @jax.named_scope("Gelu")
     def __call__(self, x):
         return jax.nn.gelu(x, approximate=self.approximate)
@@ -517,23 +522,28 @@ class CausalSelfAttention:
     def __call__(self, x, rng_key, is_training):
         query, key, value = jnp.split(self.c_attn(x), 3, axis=Axis.feature)
 
-        shape = (
-            x.shape[Axis.batch],
-            x.shape[Axis.sequence],
-            self.n_head,
-            x.shape[Axis.feature] // self.n_head,
-        )
-        query = jnp.reshape(query, shape)
-        key = jnp.reshape(key, shape)
-        value = jnp.reshape(value, shape)
+        B, T, C = x.shape[Axis.batch], x.shape[Axis.sequence], x.shape[Axis.feature]
+        head_dim = C // self.n_head
 
-        x_dpa = jax.nn.dot_product_attention(
-            query=query,
-            key=key,
-            value=value,
-            is_causal=True,
-            implementation=DOT_PRODUCT_ATTENTION,
-        )
+        query = jnp.reshape(query, (B, T, self.n_head, head_dim))
+        key = jnp.reshape(key, (B, T, self.n_head, head_dim))
+        value = jnp.reshape(value, (B, T, self.n_head, head_dim))
+
+        if DOT_PRODUCT_ATTENTION is not None:
+            x_dpa = jax.nn.dot_product_attention(
+                query=query,
+                key=key,
+                value=value,
+                is_causal=True,
+                implementation=DOT_PRODUCT_ATTENTION,
+            )
+        else:
+            query = jnp.transpose(query, (0, 2, 1, 3))
+            key = jnp.transpose(key, (0, 2, 1, 3))
+            value = jnp.transpose(value, (0, 2, 1, 3))
+            mask = jnp.tril(jnp.ones((T, T)))
+            x_dpa = dot_product_attention_simple(query, key, value, mask=mask)
+            x_dpa = jnp.transpose(x_dpa, (0, 2, 1, 3))
 
         x = jnp.reshape(x_dpa, x.shape)
         x = self.c_proj(x)
@@ -649,7 +659,10 @@ class GPT:
 
         def get_flops(x):
             compiled = jax.jit(f).trace(x).lower().compile()
-            return compiled.cost_analysis()["flops"]
+            cost = compiled.cost_analysis()
+            if cost is None:
+                return 0
+            return cost.get("flops", 0)
 
         x = jax.ShapeDtypeStruct((1, 1), dtype=dtype)
         flops_per_token = get_flops(x)

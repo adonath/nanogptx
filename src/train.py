@@ -62,9 +62,7 @@ DACITE_CAST = [
     Path,
 ]
 DACITE_CONFIG = DaciteConfig(cast=DACITE_CAST, strict=True)
-PROFILER_OPTIONS = jax.profiler.ProfileOptions()
-# PROFILER_OPTIONS.python_tracer_level = 0
-# PROFILER_OPTIONS.host_tracer_level = 0
+PROFILER_OPTIONS = getattr(jax.profiler, "ProfileOptions", lambda: None)()
 
 log = logging.getLogger(__name__)
 

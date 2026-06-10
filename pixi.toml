@@ -61,9 +61,9 @@ optax = ">=0.2.5,<0.3"
 jax = { version = ">=0.5.0, <0.8", extras = ["cuda12"] }
 
 [feature.gpu-mps.target.osx-arm64.pypi-dependencies]
-optax = ">=0.1.8,<0.3"
-jax = "==0.5.0"
-jax-metal = ">=0.0.7"
+optax = ">=0.2.5,<0.3"
+jax = ">=0.5.0,<0.7"
+jax-metal = ">=0.1.1"
 
 [feature.gpu-mps.activation.env]
 JAX_ENABLE_X64="0"
@@ -97,6 +97,6 @@ cpu = ["cpu", "train", "io"] # io to load hellaswag examples
 cpu-profile = ["cpu", "train", "profile"]
 gpu = ["gpu", "train", "io"]
 gpu-profile = ["gpu", "train", "profile"]
-gpu-mps = ["gpu-mps",  "train"]
+gpu-mps = ["gpu-mps", "train", "io"]
 all-cpu = ["notebook", "cpu", "io", "train"]
 tensorboard = ["tensorboard"]
