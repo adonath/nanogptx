@@ -31,6 +31,7 @@ import json
 import logging
 import math
 import os
+import re
 from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields, replace
@@ -242,6 +243,29 @@ def init_array_leaves(rng_key, dtype=None, out_sharding=None):
         return leave
 
     return init
+
+
+def stack_array_infos(*infos):
+    """Stack multiple ArrayInfo leaves into one with a leading layer dimension"""
+    n = len(infos)
+    ref = infos[0]
+    inits = [info.init for info in infos]
+    post_inits = [info.post_init for info in infos]
+
+    def stacked_init(key, shape, dtype, out_sharding):
+        keys = jax.random.split(key, n)
+        arrays = [
+            post_init(init(k, ref.shape, dtype, out_sharding))
+            for k, init, post_init in zip(keys, inits, post_inits)
+        ]
+        return jnp.stack(arrays)
+
+    return ArrayInfo(
+        shape=(n, *ref.shape),
+        init=stacked_init,
+        dtype=ref.dtype,
+        out_sharding=ref.out_sharding,
+    )
 
 
 @register_dataclass
@@ -571,7 +595,7 @@ class GPT:
     wte: Embedding
     wpe: Embedding
     drop: Dropout
-    h: list[Block]
+    h: Block
     ln_f: LayerNorm
 
     @property
@@ -588,20 +612,13 @@ class GPT:
         rng_key, sub_rng_key = jax.random.split(rng_key)
         x = self.drop(tok_emb + pos_emb, rng_key=sub_rng_key, is_training=is_training)
 
-        # Stack the per-layer Blocks into a single Block pytree with a leading
-        # layer axis and scan over it. The blocks share an identical structure
-        # (same config), so only one Block body is traced/compiled instead of
-        # `n_layer`, which cuts compile time. RNG is threaded through the carry
-        # to match the sequential `jax.random.split` of the original loop.
-        stacked_blocks = jax.tree.map(lambda *blocks: jnp.stack(blocks), *self.h)
-
         def scan_block(carry, block):
             x, rng_key = carry
             rng_key, sub_rng_key = jax.random.split(rng_key)
             x = block(x, rng_key=sub_rng_key, is_training=is_training)
             return (x, rng_key), None
 
-        (x, rng_key), _ = jax.lax.scan(scan_block, (x, rng_key), stacked_blocks)
+        (x, rng_key), _ = jax.lax.scan(scan_block, (x, rng_key), self.h)
 
         x = self.ln_f(x)
 
@@ -617,8 +634,8 @@ class GPT:
         return GPTConfig(
             block_size=self.wpe.vocab_size,
             vocab_size=self.wte.vocab_size,
-            n_layer=len(self.h),
-            n_head=self.h[0].attn.n_head,
+            n_layer=self.h.ln_1.weight.shape[0],
+            n_head=self.h.attn.n_head,
             n_embd=self.wte.n_embd,
             dropout_rate=self.drop.rate,
             use_bias=self.ln_f.bias is not None,
@@ -676,6 +693,8 @@ class GPT:
         kwargs_emb = {
             "init_std": config.init_std,
         }
+        blocks = [Block.from_config(config) for _ in range(config.n_layer)]
+        h = jax.tree.map(stack_array_infos, *blocks, is_leaf=lambda x: isinstance(x, ArrayInfo))
         return cls(
             wte=Embedding.from_n_features(
                 vocab_size=config.vocab_size,
@@ -688,7 +707,7 @@ class GPT:
                 **kwargs_emb,
             ),
             drop=Dropout(config.dropout_rate),
-            h=[Block.from_config(config) for _ in range(config.n_layer)],
+            h=h,
             ln_f=LayerNorm.from_n_dim(
                 n_dim=config.n_embd,
                 use_bias=config.use_bias,
@@ -762,6 +781,21 @@ class GPT:
 
             if any(name.endswith(_) for _ in transposed) and transpose_weights:
                 array_infos[name].post_init = jnp.matrix_transpose
+
+        # Per-layer keys (h.0.*, h.1.*, ...) are grouped and stacked into a
+        # single Block with a leading layer axis to match the model skeleton.
+        layer_re = re.compile(r"^h\.(\d+)\.(.+)$")
+        layer_groups = {}
+
+        for name in list(array_infos):
+            m = layer_re.match(name)
+            if m:
+                idx, param = int(m.group(1)), m.group(2)
+                layer_groups.setdefault(param, {})[idx] = array_infos.pop(name)
+
+        for param, by_idx in layer_groups.items():
+            sorted_infos = [by_idx[i] for i in range(len(by_idx))]
+            array_infos[f"h.{param}"] = stack_array_infos(*sorted_infos)
 
         filename_json = path.parent / "config.json"
 
