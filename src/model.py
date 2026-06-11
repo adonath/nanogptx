@@ -760,7 +760,7 @@ class GPT:
                 raise ValueError("Init from `scratch` requires defining `config`")
             model = cls.from_config(config)
         elif init_from == InitFromEnum.resume:
-            candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
+            candidates = (PATH_DATA / "checkpoints").glob("**/model-*.safetensors")
             latest = max(candidates, key=os.path.getctime)
             model = cls.read(latest, transpose_weights=False)
         else:

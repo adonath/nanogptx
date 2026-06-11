@@ -115,7 +115,7 @@ def sample(config):
         raise ValueError("Init from `scratch` is not supported for sampling")
 
     if config.init_from == InitFromEnum.resume:
-        candidates = (PATH_DATA / "checkpoints").glob("**/*.safetensors")
+        candidates = (PATH_DATA / "checkpoints").glob("**/model-*.safetensors")
         latest = max(candidates, key=os.path.getctime)
         with safe_open(latest, framework="numpy") as f:
             encoding_name = f.metadata().get("loading.index.encoding", "gpt2")
