@@ -159,6 +159,20 @@ class Batch:
     rng_state: dict = field(metadata=dict(static=True))
 
 
+def prefetch(iterator):
+    """Stage one batch ahead of consumption
+
+    Pulling the next batch before yielding the current one lets the host-side
+    batch assembly and device transfer (including shard loads) overlap with
+    the asynchronously dispatched device computation on the current batch.
+    """
+    batch = next(iterator)
+    for batch_next in iterator:
+        yield batch
+        batch = batch_next
+    yield batch
+
+
 @dataclass(frozen=True)
 class DatasetIndex:
     """Dataset index"""
@@ -469,11 +483,13 @@ class Trainer:
                 resume_opt_state_path, opt_state
             )
 
-        data_loader_train = data_loader_train.iter(
-            block_size=model.config.block_size, resume=resume_batch
+        data_loader_train = prefetch(
+            data_loader_train.iter(
+                block_size=model.config.block_size, resume=resume_batch
+            )
         )
-        data_loader_validate = data_loader_validate.iter(
-            block_size=model.config.block_size
+        data_loader_validate = prefetch(
+            data_loader_validate.iter(block_size=model.config.block_size)
         )
 
         # `dt` accumulates wall time across the eval window so the average step
