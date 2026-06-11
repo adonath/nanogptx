@@ -114,8 +114,14 @@ class OptimizerConfig:
         """Generate optax optimizer"""
 
         def mask_fn(params):
-            """Select 2D+ parameters for decay (skip biases and norm scales)"""
-            return jax.tree.map(lambda x: x.ndim >= 2, params)
+            """Select Linear/Embedding weights for decay (skip biases and LayerNorm
+            scales by path, since stacked block params all have a leading layer axis)"""
+
+            def is_decayed(path, x):
+                name = join_path(path)
+                return name.endswith("weight") and "ln_" not in name
+
+            return jax.tree.map_with_path(is_decayed, params)
 
         adamw = optax.adamw(
             learning_rate=self.lr_schedule,
