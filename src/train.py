@@ -552,7 +552,7 @@ class Trainer:
 
                     if self.eval_hellaswag:
                         model_single_device = jax.device_put(model, eval_sharding)
-                        log_info["hellaswag-acc"] = evaluator.evaluate(
+                        log_info["hellaswag-acc"] = evaluator.evaluate_hellaswag(
                             model=model_single_device, data_loader=data_loader_hellaswag
                         )
 

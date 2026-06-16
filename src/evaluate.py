@@ -1,5 +1,7 @@
+import json
 import logging
 from dataclasses import dataclass
+from enum import StrEnum
 from functools import lru_cache
 
 import jax
@@ -18,6 +20,13 @@ log = logging.getLogger(__name__)
 TAB_WIDTH = 4
 
 
+class BenchmarkEnum(StrEnum):
+    """Supported evaluation benchmarks"""
+
+    hellaswag = "hellaswag"
+    lambada_openai = "lambada-openai"
+
+
 @dataclass
 class EvaluationExample:
     """A single multiple-choice evaluation example"""
@@ -27,6 +36,16 @@ class EvaluationExample:
     tokens: jax.Array
     mask: jax.Array
     label: int
+
+
+@dataclass
+class LambadaExample:
+    """A single LAMBADA last-word prediction example"""
+
+    ctx: str
+    target: str
+    tokens: jax.Array
+    mask: jax.Array
 
 
 @lru_cache(maxsize=1)
@@ -74,10 +93,43 @@ def load_hellaswag_examples(path, out_sharding=None):
             yield tokenize_example(row, out_sharding=out_sharding)
 
 
+def tokenize_lambada_example(text, out_sharding=None) -> LambadaExample:
+    """Tokenize a single LAMBADA example into context + target last word"""
+    enc = _get_gpt2_encoder()
+
+    ctx, _, target = text.strip().rpartition(" ")
+
+    ctx_tokens = enc.encode(ctx)
+    target_tokens = enc.encode(" " + target)
+
+    tokens = np.asarray(ctx_tokens + target_tokens, dtype=np.int32)[None, :]
+    mask = np.zeros_like(tokens, dtype=bool)
+    mask[0, len(ctx_tokens) :] = True
+
+    return LambadaExample(
+        tokens=jax.device_put(tokens, out_sharding),
+        mask=jax.device_put(mask, out_sharding),
+        ctx=ctx,
+        target=target,
+    )
+
+
+def load_lambada_examples(path, out_sharding=None):
+    """Yield examples from a JSON-lines file, cycling indefinitely"""
+    with open(path) as fh:
+        texts = [json.loads(line)["text"] for line in fh if line.strip()]
+
+    while True:
+        for text in texts:
+            yield tokenize_lambada_example(text, out_sharding=out_sharding)
+
+
 @dataclass
 class ModelEvaluator:
     """Model evaluator"""
 
+    benchmark: BenchmarkEnum = BenchmarkEnum.hellaswag
+    init_from: InitFromEnum = InitFromEnum.gpt2
     n_examples: int = 64
     print_results: bool = False
 
@@ -101,7 +153,24 @@ class ModelEvaluator:
             )
         print()
 
-    def evaluate(self, model, data_loader) -> float:
+    @staticmethod
+    def print_lambada_result(idx, example, num_correct, correct, pred):
+        """Print results"""
+        title = f"Example {idx}"
+        title += "\n" + "-" * len(title)
+        print(title)
+        print("Eval:")
+        print(
+            f"\tAcc: {num_correct / idx:.4f} correct: {bool(correct)}".expandtabs(
+                TAB_WIDTH
+            )
+        )
+        print(f"Context:\n\t{example.ctx}".expandtabs(TAB_WIDTH))
+        print(f"Target: {example.target!r}".expandtabs(TAB_WIDTH))
+        print(f"Predicted: {pred!r}".expandtabs(TAB_WIDTH))
+        print()
+
+    def evaluate_hellaswag(self, model, data_loader) -> float:
         """Evaluate hellaswag accuracy"""
         num_correct = 0
         n_seen = 0
@@ -128,16 +197,58 @@ class ModelEvaluator:
 
         return num_correct / n_seen if n_seen else 0.0
 
+    def evaluate_lambada(self, model, data_loader) -> float:
+        """Evaluate LAMBADA last-word prediction accuracy
+
+        A prediction counts as correct only if the model greedily decodes
+        every token of the target last word, matching ``lm-eval-harness``'s
+        ``lambada_openai`` accuracy metric.
+        """
+        enc = _get_gpt2_encoder()
+        num_correct = 0
+        n_seen = 0
+        rng_key = jax.random.key(9232)
+
+        for idx, example in zip(range(1, self.n_examples + 1), data_loader):
+            logits = model(
+                example.tokens,
+                rng_key=rng_key,
+                is_training=False,
+                inference=False,
+            )
+            preds = jnp.argmax(logits[..., :-1, :], axis=-1)
+            targets = example.tokens[..., 1:]
+            target_mask = example.mask[..., 1:]
+
+            correct = bool(jnp.all((preds == targets) | ~target_mask))
+            num_correct += int(correct)
+            n_seen = idx
+
+            if self.print_results:
+                pred = enc.decode(np.asarray(preds[target_mask]).tolist())
+                self.print_lambada_result(idx, example, num_correct, correct, pred)
+
+        return num_correct / n_seen if n_seen else 0.0
+
+    def run(self, model) -> float:
+        """Load the selected benchmark and evaluate accuracy"""
+        if self.benchmark == BenchmarkEnum.hellaswag:
+            data_loader = load_hellaswag_examples(
+                PATH_DATA / "download/hellaswag/validation-00000-of-00001.parquet"
+            )
+            return self.evaluate_hellaswag(model=model, data_loader=data_loader)
+
+        data_loader = load_lambada_examples(
+            PATH_DATA / "download/lambada-openai/lambada_test_en.jsonl"
+        )
+        return self.evaluate_lambada(model=model, data_loader=data_loader)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     evaluator = tyro.cli(ModelEvaluator)
 
-    hellaswag = load_hellaswag_examples(
-        PATH_DATA / "download/hellaswag/validation-00000-of-00001.parquet"
-    )
+    model = GPT.from_init(evaluator.init_from).init()
 
-    model = GPT.from_init(InitFromEnum.gpt2).init()
-
-    accuracy = evaluator.evaluate(model=model, data_loader=hellaswag)
-    log.info("Overall accuracy: %.4f", accuracy)
+    accuracy = evaluator.run(model=model)
+    log.info("%s accuracy: %.4f", evaluator.benchmark.value, accuracy)
