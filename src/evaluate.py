@@ -129,7 +129,7 @@ class ModelEvaluator:
     """Model evaluator"""
 
     benchmark: BenchmarkEnum = BenchmarkEnum.hellaswag
-    init_from: InitFromEnum = InitFromEnum.gpt2
+    init_from: InitFromEnum = InitFromEnum.resume
     n_examples: int = 64
     print_results: bool = False
 
@@ -148,9 +148,7 @@ class ModelEvaluator:
         print(f"Context:\n\t{example.ctx}".expandtabs(TAB_WIDTH))
         print("Endings:")
         for i, end in enumerate(example.endings):
-            print(
-                f"\t{i} (loss: {avg_loss[i].item():.4f}) {end}".expandtabs(TAB_WIDTH)
-            )
+            print(f"\t{i} (loss: {avg_loss[i].item():.4f}) {end}".expandtabs(TAB_WIDTH))
         print()
 
     @staticmethod
