@@ -30,6 +30,7 @@ class DatasetEnum(StrEnum):
     tinystories = "tinystories"
     pile_uncopyrighted = "pile-uncopyrighted"
     hellaswag = "hellaswag"
+    lambada_openai = "lambada-openai"
 
 
 class PretrainedModels(StrEnum):
