@@ -25,6 +25,7 @@ class BenchmarkEnum(StrEnum):
 
     hellaswag = "hellaswag"
     lambada_openai = "lambada-openai"
+    winogrande = "winogrande"
 
 
 @dataclass
@@ -54,6 +55,28 @@ def _get_gpt2_encoder():
     return tiktoken.get_encoding("gpt2")
 
 
+def _build_multiple_choice_example(
+    tok_rows, mask_rows, label, ctx, endings, out_sharding=None
+) -> EvaluationExample:
+    """Pad ragged token/mask rows into a rectangular batch and wrap as an example"""
+    n_rows = len(tok_rows)
+    max_len = max(len(row) for row in tok_rows)
+    tokens = np.zeros((n_rows, max_len), dtype=np.int32)
+    mask = np.zeros((n_rows, max_len), dtype=bool)
+
+    for i, (tok_row, mask_row) in enumerate(zip(tok_rows, mask_rows)):
+        tokens[i, : len(tok_row)] = np.asarray(tok_row)
+        mask[i, : len(mask_row)] = np.asarray(mask_row)
+
+    return EvaluationExample(
+        tokens=jax.device_put(tokens, out_sharding),
+        mask=jax.device_put(mask, out_sharding),
+        label=int(label),
+        ctx=ctx,
+        endings=endings,
+    )
+
+
 def tokenize_example(example, out_sharding=None) -> EvaluationExample:
     """Tokenize a single multiple-choice example"""
     enc = _get_gpt2_encoder()
@@ -66,21 +89,8 @@ def tokenize_example(example, out_sharding=None) -> EvaluationExample:
         tok_rows.append(ctx_tokens + end_tokens)
         mask_rows.append([0] * len(ctx_tokens) + [1] * len(end_tokens))
 
-    n_endings = len(tok_rows)
-    max_len = max(len(row) for row in tok_rows)
-    tokens = np.zeros((n_endings, max_len), dtype=np.int32)
-    mask = np.zeros((n_endings, max_len), dtype=bool)
-
-    for i, (tok_row, mask_row) in enumerate(zip(tok_rows, mask_rows)):
-        tokens[i, : len(tok_row)] = np.asarray(tok_row)
-        mask[i, : len(mask_row)] = np.asarray(mask_row)
-
-    return EvaluationExample(
-        tokens=jax.device_put(tokens, out_sharding),
-        mask=jax.device_put(mask, out_sharding),
-        label=int(example.label),
-        ctx=example.ctx,
-        endings=example.endings,
+    return _build_multiple_choice_example(
+        tok_rows, mask_rows, example.label, example.ctx, example.endings, out_sharding
     )
 
 
@@ -91,6 +101,44 @@ def load_hellaswag_examples(path, out_sharding=None):
     while True:
         for row in data.itertuples(index=False):
             yield tokenize_example(row, out_sharding=out_sharding)
+
+
+def tokenize_winogrande_example(example, out_sharding=None) -> EvaluationExample:
+    """Tokenize a single WinoGrande example into its two candidate resolutions
+
+    Following ``lm-eval-harness``' ``winogrande`` task, each option is
+    substituted into the ``_`` blank and the model scores the likelihood of the
+    *suffix* that follows the blank, conditioned on the prefix-plus-option. The
+    two suffixes are identical, so comparing mean per-token losses (as
+    :meth:`ModelEvaluator.evaluate_multiple_choice` does) reproduces the
+    harness' ``acc`` metric.
+    """
+    enc = _get_gpt2_encoder()
+
+    blank = example.sentence.index("_")
+    prefix = example.sentence[:blank]
+    suffix_tokens = enc.encode(" " + example.sentence[blank + 1 :].strip())
+
+    options = [example.option1, example.option2]
+    tok_rows, mask_rows = [], []
+
+    for option in options:
+        ctx_tokens = enc.encode(prefix + option)
+        tok_rows.append(ctx_tokens + suffix_tokens)
+        mask_rows.append([0] * len(ctx_tokens) + [1] * len(suffix_tokens))
+
+    return _build_multiple_choice_example(
+        tok_rows, mask_rows, int(example.answer) - 1, example.sentence, options, out_sharding
+    )
+
+
+def load_winogrande_examples(path, out_sharding=None):
+    """Yield examples from a parquet file, cycling indefinitely"""
+    data = pd.read_parquet(path)
+
+    while True:
+        for row in data.itertuples(index=False):
+            yield tokenize_winogrande_example(row, out_sharding=out_sharding)
 
 
 def tokenize_lambada_example(text, out_sharding=None) -> LambadaExample:
@@ -168,8 +216,12 @@ class ModelEvaluator:
         print(f"Predicted: {pred!r}".expandtabs(TAB_WIDTH))
         print()
 
-    def evaluate_hellaswag(self, model, data_loader) -> float:
-        """Evaluate hellaswag accuracy"""
+    def evaluate_multiple_choice(self, model, data_loader) -> float:
+        """Evaluate multiple-choice accuracy (e.g. HellaSwag, WinoGrande)
+
+        Each candidate completion is scored by its mean per-token cross-entropy
+        over the masked answer tokens; the lowest-loss option is the prediction.
+        """
         num_correct = 0
         n_seen = 0
         rng_key = jax.random.key(9232)
@@ -234,7 +286,13 @@ class ModelEvaluator:
             data_loader = load_hellaswag_examples(
                 PATH_DATA / "download/hellaswag/validation-00000-of-00001.parquet"
             )
-            return self.evaluate_hellaswag(model=model, data_loader=data_loader)
+            return self.evaluate_multiple_choice(model=model, data_loader=data_loader)
+
+        if self.benchmark == BenchmarkEnum.winogrande:
+            data_loader = load_winogrande_examples(
+                PATH_DATA / "download/winogrande/validation-00000-of-00001.parquet"
+            )
+            return self.evaluate_multiple_choice(model=model, data_loader=data_loader)
 
         data_loader = load_lambada_examples(
             PATH_DATA / "download/lambada-openai/lambada_test_en.jsonl"

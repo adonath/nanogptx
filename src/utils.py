@@ -31,6 +31,7 @@ class DatasetEnum(StrEnum):
     pile_uncopyrighted = "pile-uncopyrighted"
     hellaswag = "hellaswag"
     lambada_openai = "lambada-openai"
+    winogrande = "winogrande"
 
 
 class PretrainedModels(StrEnum):

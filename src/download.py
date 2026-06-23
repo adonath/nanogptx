@@ -51,6 +51,7 @@ DATA_URLS = {
         "https://huggingface.co/datasets/Rowan/hellaswag/resolve/main/data/validation-00000-of-00001.parquet",
     ],
     DatasetEnum.lambada_openai: ["https://huggingface.co/datasets/EleutherAI/lambada_openai/resolve/main/data/lambada_test_en.jsonl",],
+    DatasetEnum.winogrande: ["https://huggingface.co/datasets/allenai/winogrande/resolve/main/winogrande_xl/validation-00000-of-00001.parquet",],
 }
 # fmt: on
 
